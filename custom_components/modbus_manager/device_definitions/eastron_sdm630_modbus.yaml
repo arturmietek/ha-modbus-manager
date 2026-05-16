@@ -130,8 +130,8 @@ entities:
     entity_category: diagnostic
 
   # ── Phase apparent power ──────────────────────────────────────────────────
-  - id: l1_volt_amps
-    name: "L1 Volt Amps"
+  - id: l1_apparent_power
+    name: "L1 Apparent Power"
     register_type: input
     address: 18
     entity_type: sensor
@@ -143,8 +143,8 @@ entities:
     precision: 1
     entity_category: diagnostic
 
-  - id: l2_volt_amps
-    name: "L2 Volt Amps"
+  - id: l2_apparent_power
+    name: "L2 Apparent Power"
     register_type: input
     address: 20
     entity_type: sensor
@@ -156,8 +156,8 @@ entities:
     precision: 1
     entity_category: diagnostic
 
-  - id: l3_volt_amps
-    name: "L3 Volt Amps"
+  - id: l3_apparent_power
+    name: "L3 Apparent Power"
     register_type: input
     address: 22
     entity_type: sensor
@@ -292,8 +292,8 @@ entities:
     entity_category: diagnostic
 
   # ── Totals ────────────────────────────────────────────────────────────────
-  - id: total_power
-    name: "Total System Power"
+  - id: total_active_power
+    name: "Total System Active Power"
     register_type: input
     address: 52
     entity_type: sensor
@@ -304,8 +304,8 @@ entities:
     state_class: measurement
     precision: 0
 
-  - id: total_volt_amps
-    name: "Total System Volt Amps"
+  - id: total_apparent_power
+    name: "Total System Apparent Power"
     register_type: input
     address: 56
     entity_type: sensor
@@ -356,8 +356,8 @@ entities:
     precision: 2
 
   # ── Energy counters ───────────────────────────────────────────────────────
-  - id: total_import_kwh
-    name: "Total Import kWh"
+  - id: import_active_energy
+    name: "Import Active Energy"
     register_type: input
     address: 72
     entity_type: sensor
@@ -368,8 +368,8 @@ entities:
     state_class: total_increasing
     precision: 2
 
-  - id: total_export_kwh
-    name: "Total Export kWh"
+  - id: export_active_energy
+    name: "Export Active Energy"
     register_type: input
     address: 74
     entity_type: sensor

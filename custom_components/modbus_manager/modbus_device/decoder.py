@@ -11,8 +11,8 @@ def decode_value(
     byte_order: str = "BIG",
     scale: float = 1.0,
     offset: float = 0.0,
-) -> int | float:
-    """Convert raw register word(s) to a scaled Python number."""
+) -> int | float | str:
+    """Convert raw register word(s) to a Python value."""
     if data_type == "UINT16":
         return raw[0] * scale + offset
 
@@ -45,6 +45,17 @@ def decode_value(
             packed = struct.pack(">HHHH", *reversed(raw[:4]))
         return struct.unpack(">q", packed)[0] * scale + offset
 
+    if data_type == "STRING":
+        chars = []
+        for reg in raw:
+            high = (reg >> 8) & 0xFF
+            low = reg & 0xFF
+            if high:
+                chars.append(chr(high))
+            if low:
+                chars.append(chr(low))
+        return "".join(chars).strip("\x00")
+
     return raw[0] * scale + offset  # unknown → UINT16 fallback
 
 
@@ -53,19 +64,26 @@ def _swap(v: int) -> int:
 
 
 def apply_value_map(value, value_map: dict):
-    """Apply a value_map dict to a decoded value. Returns mapped result or original."""
+    """Apply a value_map dict to a decoded value. Returns mapped result or original.
+
+    Lookup order: exact match → int coercion → str(int) coercion.
+    Handles bool bits from coil reads (True/False) and numeric float→int coercion.
+    """
     if not value_map:
         return value
+    # Exact match — handles bool True/False correctly via Python's == and hash
     if value in value_map:
         return value_map[value]
-    # Numeric coercion: 2.0 → 2
-    if isinstance(value, float) and value.is_integer():
-        int_val = int(value)
-        if int_val in value_map:
-            return value_map[int_val]
-    str_val = str(value)
-    if str_val in value_map:
-        return value_map[str_val]
+    # Numeric coercion: int(2.0) → 2, int(True) → 1, int(False) → 0
+    try:
+        as_int = int(value)
+        if as_int in value_map:
+            return value_map[as_int]
+        as_str = str(as_int)
+        if as_str in value_map:
+            return value_map[as_str]
+    except (ValueError, TypeError):
+        pass
     return value
 
 

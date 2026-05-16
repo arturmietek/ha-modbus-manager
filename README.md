@@ -45,18 +45,30 @@ pipx install .
 Run:
 
 ```bash
-modbus-monitor                              # interactive port picker
-modbus-monitor --port /dev/ttyUSB0 --preset custom_components/modbus_manager/device_definitions/modbus_gate_controller.yaml
+modbus-monitor custom_components/modbus_manager/device_definitions/modbus_gate_controller.yaml
+modbus-monitor --port /dev/ttyUSB0 --slave 1 custom_components/modbus_manager/device_definitions/modbus_gate_controller.yaml
 ```
 
 ## CLI monitor usage
 
+```bash
+modbus-monitor device.yaml                                       # transport picker → slave config
+modbus-monitor --port /dev/ttyUSB0 --slave 1 device.yaml        # RTU, no prompts
+modbus-monitor --host 192.168.1.100 --slave 1 device.yaml       # TCP, no prompts
+modbus-monitor --host 192.168.1.100 --tcp-port 502 --slave 1 device.yaml
+```
+
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--port` | *(picker)* | Serial port, e.g. `/dev/ttyUSB0` or `COM3` |
-| `--baud` | `9600` | Baud rate |
-| `--preset` | `simulator-preset.json` | Device definition `.yaml` or legacy `.json` |
+| `PRESET` | *(required)* | Device definition YAML file (positional or `--preset`) |
+| `--port` | *(picker)* | RTU serial port, e.g. `/dev/ttyUSB0` or `COM3` |
+| `--baud` | `9600` | RTU baud rate |
+| `--host` | *(picker)* | TCP host / IP address, e.g. `192.168.1.100` |
+| `--tcp-port` | `502` | TCP port |
+| `--slave` | *(config screen)* | Slave / unit ID 1–247; skips the interactive config screen |
 | `--interval` | `0.5` | Refresh interval in seconds |
+
+When neither `--port` nor `--host` is given, an interactive picker lets you choose the transport (RTU or TCP) and then the serial port or IP address. When `--slave` is omitted, a config screen lets you set it interactively.
 
 | Key | Action |
 |-----|--------|

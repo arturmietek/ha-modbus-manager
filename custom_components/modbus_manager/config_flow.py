@@ -442,7 +442,7 @@ class ModbusManagerOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             remove_id = user_input[CONF_DEVICE_ID]
             self._devices = [d for d in self._devices if d[CONF_DEVICE_ID] != remove_id]
-            return await self.async_step_init()
+            return self.async_create_entry(data={CONF_DEVICES: self._devices})
 
         return self.async_show_form(
             step_id="remove_device",

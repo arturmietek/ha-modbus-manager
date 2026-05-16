@@ -17,12 +17,14 @@ dependencies = [
 modbus-monitor = "modbus_monitor:main"
 
 # modbus_device lives inside the HA component directory.
-# setuptools finds it there and installs it as a top-level package,
-# so the monitor can import it as `from modbus_device import ...`
+# We declare it explicitly so setuptools finds it there and installs it as a
+# top-level package — the monitor imports it as `from modbus_device import ...`
 # while the HA component uses relative imports `from .modbus_device import ...`
-[tool.setuptools.packages.find]
-where = ["custom_components/modbus_manager"]
-include = ["modbus_device*"]
-
+# Note: packages.find with a custom `where` suppresses py-modules, so we use
+# explicit packages + package-dir instead.
 [tool.setuptools]
 py-modules = ["modbus_monitor"]
+packages = ["modbus_device"]
+
+[tool.setuptools.package-dir]
+modbus_device = "custom_components/modbus_manager/modbus_device"

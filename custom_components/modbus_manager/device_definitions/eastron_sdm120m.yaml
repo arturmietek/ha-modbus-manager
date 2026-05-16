@@ -116,11 +116,9 @@ entities:
     entity_type: sensor
     data_type: FLOAT32
     byte_order: BIG
-    scale: 100                    # raw: 0.0–1.0 → display: 0–100 %
-    unit: "%"
     device_class: power_factor
     state_class: measurement
-    precision: 0
+    precision: 3
     entity_category: diagnostic
 
   - id: frequency
@@ -143,8 +141,8 @@ entities:
     entity_type: sensor
     data_type: FLOAT32
     byte_order: BIG
-    unit: "kvar"
-    device_class: reactive_power
+    unit: "kvarh"
+    device_class: reactive_energy
     state_class: total_increasing
     precision: 1
     entity_category: diagnostic
@@ -156,8 +154,8 @@ entities:
     entity_type: sensor
     data_type: FLOAT32
     byte_order: BIG
-    unit: "kvar"
-    device_class: reactive_power
+    unit: "kvarh"
+    device_class: reactive_energy
     state_class: total_increasing
     precision: 1
     entity_category: diagnostic
@@ -169,7 +167,8 @@ entities:
     entity_type: sensor
     data_type: FLOAT32
     byte_order: BIG
-    unit: "kvar"
+    unit: "kvarh"
+    device_class: reactive_energy
     state_class: total_increasing
     precision: 1
     entity_category: diagnostic
@@ -290,6 +289,7 @@ entities:
     data_type: FLOAT32
     byte_order: BIG
     readonly: true
+    precision: 0
     entity_category: diagnostic
 
   - id: measurement_mode
@@ -314,6 +314,7 @@ entities:
     data_type: FLOAT32
     byte_order: BIG
     readonly: true
+    precision: 0
     entity_category: diagnostic
 
   - id: pulse1_output_mode
@@ -324,6 +325,7 @@ entities:
     data_type: FLOAT32
     byte_order: BIG
     readonly: true
+    precision: 0
     entity_category: diagnostic
 
   # ── Device identification ──────────────────────────────────────────────────
@@ -332,9 +334,21 @@ entities:
     register_type: holding
     address: 64512
     entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    readonly: true
+    precision: 0
+    entity_category: diagnostic
+
+  - id: meter_code
+    name: "Meter Code"
+    register_type: holding
+    address: 64514
+    entity_type: sensor
     data_type: UINT16
     byte_order: BIG
     readonly: true
+    precision: 0
     entity_category: diagnostic
 
   - id: software_version
@@ -345,4 +359,5 @@ entities:
     data_type: UINT16
     byte_order: BIG
     readonly: true
+    precision: 0
     entity_category: diagnostic

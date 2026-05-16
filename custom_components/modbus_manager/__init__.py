@@ -6,8 +6,9 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .const import DOMAIN, PLATFORMS, CONF_DEVICES, CONF_DEFINITION, CONF_DEFINITION_FILE
+from .const import DOMAIN, PLATFORMS, CONF_DEVICES, CONF_DEVICE_ID, CONF_DEFINITION, CONF_DEFINITION_FILE
 from .coordinator import ModbusManagerCoordinator
 from .config_flow import _load_definition
 
@@ -63,10 +64,43 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Set up all entity platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Remove entities and devices from HA registry that belong to devices no
+    # longer present in options (e.g. after user removes a device).
+    current_device_ids = {d[CONF_DEVICE_ID] for d in devices}
+    _cleanup_orphaned_registry_entries(hass, entry, current_device_ids)
+
     # Re-setup entities when options change (device added/removed)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     return True
+
+
+def _cleanup_orphaned_registry_entries(
+    hass: HomeAssistant, entry: ConfigEntry, current_device_ids: set[str]
+) -> None:
+    """Remove entity and device registry entries for devices no longer in options."""
+    prefix = entry.entry_id + "_"
+
+    entity_reg = er.async_get(hass)
+    for entity_entry in er.async_entries_for_config_entry(entity_reg, entry.entry_id):
+        uid = entity_entry.unique_id
+        if uid.startswith(prefix):
+            # unique_id format: "{entry_id}_{device_id}_{entity_id}"
+            remainder = uid[len(prefix):]
+            if not any(remainder.startswith(did + "_") for did in current_device_ids):
+                _LOGGER.debug("Removing orphaned entity %s (unique_id: %s)", entity_entry.entity_id, uid)
+                entity_reg.async_remove(entity_entry.entity_id)
+
+    device_reg = dr.async_get(hass)
+    for device_entry in dr.async_entries_for_config_entry(device_reg, entry.entry_id):
+        for domain, identifier in device_entry.identifiers:
+            if domain == DOMAIN and identifier.startswith(prefix):
+                # identifier format: "{entry_id}_{device_id}"
+                device_id = identifier[len(prefix):]
+                if device_id not in current_device_ids:
+                    _LOGGER.debug("Removing orphaned device %s (device_id: %s)", device_entry.id, device_id)
+                    device_reg.async_remove_device(device_entry.id)
+                break
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

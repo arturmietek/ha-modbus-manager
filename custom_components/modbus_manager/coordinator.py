@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import struct
 import time
 from datetime import timedelta
 from typing import Any
@@ -34,19 +33,12 @@ from .const import (
     REGISTER_DISCRETE_INPUT,
     REGISTER_HOLDING,
     REGISTER_INPUT,
-    DATA_TYPE_INT16,
     DATA_TYPE_UINT16,
-    DATA_TYPE_INT32,
-    DATA_TYPE_UINT32,
-    DATA_TYPE_FLOAT32,
-    DATA_TYPE_INT64,
     DATA_TYPE_STRING,
     BYTE_ORDER_BIG,
-    BYTE_ORDER_LITTLE,
-    BYTE_ORDER_BIG_SWAP,
-    BYTE_ORDER_LITTLE_SWAP,
     DOMAIN,
 )
+from .modbus_device import decode_value, apply_value_map, REGISTER_COUNT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -89,71 +81,6 @@ def _apply_device_params(device: dict) -> dict:
     device[CONF_DEFINITION] = {**definition, "entities": resolved_entities}
     return device
 
-
-def _decode_registers(registers: list[int], data_type: str, byte_order: str, scale: float = 1.0) -> Any:
-    """Decode raw Modbus register values into a Python value."""
-    if data_type == DATA_TYPE_UINT16:
-        return registers[0] * scale
-
-    if data_type == DATA_TYPE_INT16:
-        raw = registers[0]
-        value = raw if raw < 0x8000 else raw - 0x10000
-        return value * scale
-
-    if len(registers) < 2 and data_type in (DATA_TYPE_INT32, DATA_TYPE_UINT32, DATA_TYPE_FLOAT32):
-        raise ValueError(f"Not enough registers for {data_type}")
-
-    # Pack register words according to byte order
-    if byte_order == BYTE_ORDER_BIG:
-        word_bytes = struct.pack(">HH", registers[0], registers[1])
-    elif byte_order == BYTE_ORDER_LITTLE:
-        word_bytes = struct.pack(">HH", registers[1], registers[0])
-    elif byte_order == BYTE_ORDER_BIG_SWAP:
-        # words in big-endian order, bytes within each word swapped
-        word_bytes = struct.pack(">HH", _swap_bytes(registers[0]), _swap_bytes(registers[1]))
-    elif byte_order == BYTE_ORDER_LITTLE_SWAP:
-        word_bytes = struct.pack(">HH", _swap_bytes(registers[1]), _swap_bytes(registers[0]))
-    else:
-        word_bytes = struct.pack(">HH", registers[0], registers[1])
-
-    if data_type == DATA_TYPE_FLOAT32:
-        (value,) = struct.unpack(">f", word_bytes)
-        return round(value * scale, 6)
-
-    if data_type == DATA_TYPE_INT32:
-        (value,) = struct.unpack(">i", word_bytes)
-        return value * scale
-
-    if data_type == DATA_TYPE_UINT32:
-        (value,) = struct.unpack(">I", word_bytes)
-        return value * scale
-
-    if data_type == DATA_TYPE_INT64:
-        if len(registers) < 4:
-            raise ValueError("Not enough registers for INT64")
-        if byte_order in (BYTE_ORDER_BIG, BYTE_ORDER_BIG_SWAP):
-            word_bytes = struct.pack(">HHHH", *registers[:4])
-        else:
-            word_bytes = struct.pack(">HHHH", *reversed(registers[:4]))
-        (value,) = struct.unpack(">q", word_bytes)
-        return value * scale
-
-    if data_type == DATA_TYPE_STRING:
-        chars = []
-        for reg in registers:
-            high = (reg >> 8) & 0xFF
-            low = reg & 0xFF
-            if high:
-                chars.append(chr(high))
-            if low:
-                chars.append(chr(low))
-        return "".join(chars).strip("\x00")
-
-    return registers[0] * scale
-
-
-def _swap_bytes(word: int) -> int:
-    return ((word & 0xFF) << 8) | ((word >> 8) & 0xFF)
 
 
 class ModbusManagerCoordinator(DataUpdateCoordinator):
@@ -297,7 +224,7 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
                 for entity in coil_entities:
                     idx = entity["address"] - start
                     if 0 <= idx < len(rr.bits):
-                        data[entity["id"]] = _apply_value_map(rr.bits[idx], entity)
+                        data[entity["id"]] = apply_value_map(rr.bits[idx], entity.get("value_map") or {})
 
         # ── Discrete inputs ───────────────────────────────────────────────────
         di_entities = [e for e in entities if e.get("register_type") == REGISTER_DISCRETE_INPUT]
@@ -310,7 +237,7 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
                 for entity in di_entities:
                     idx = entity["address"] - start
                     if 0 <= idx < len(rr.bits):
-                        data[entity["id"]] = _apply_value_map(rr.bits[idx], entity)
+                        data[entity["id"]] = apply_value_map(rr.bits[idx], entity.get("value_map") or {})
 
         # ── Holding registers ─────────────────────────────────────────────────
         holding_entities = [e for e in entities if e.get("register_type") == REGISTER_HOLDING]
@@ -340,7 +267,7 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
 
         for entity in sorted_entities:
             addr = entity["address"]
-            reg_count = _entity_register_count(entity)
+            reg_count = _reg_count(entity)
             entity_end = addr + reg_count - 1
 
             if current_start is None:
@@ -394,23 +321,21 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
 
             for entity in group_entities:
                 addr = entity["address"]
-                reg_count = _entity_register_count(entity)
+                reg_count = _reg_count(entity)
                 idx = addr - start
                 raw_regs = rr.registers[idx : idx + reg_count]
 
                 if len(raw_regs) < reg_count:
                     continue
 
-                data_type = entity.get("data_type", "UINT16")
+                data_type = entity.get("data_type", DATA_TYPE_UINT16)
                 byte_order = entity.get("byte_order", BYTE_ORDER_BIG)
                 scale = entity.get("scale", 1.0)
+                offset = entity.get("offset", 0.0)
 
                 try:
-                    raw = _decode_registers(raw_regs, data_type, byte_order, scale)
-                    offset = entity.get("offset", 0)
-                    if offset:
-                        raw = raw + offset
-                    value = _apply_value_map(raw, entity)
+                    raw = decode_value(raw_regs, data_type, byte_order, scale, offset)
+                    value = apply_value_map(raw, entity.get("value_map") or {})
                     published = self._validate_and_track(value, entity, device_id)
                     if published is not _WITHHELD:
                         data[entity["id"]] = published
@@ -477,46 +402,9 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
         return not rr.isError()
 
 
-def _apply_value_map(value: Any, entity: dict) -> Any:
-    """Translate a raw value through the entity's value_map if defined.
-
-    YAML keys are strings or numbers; bool values from coils/discrete inputs
-    are matched by their bool identity first, then by int (1/0).
-
-    Example YAML:
-        value_map:
-          2: "4800 bps"
-          3: "9600 bps"
-          true: "open"
-          false: "closed"
-    """
-    value_map: dict | None = entity.get("value_map")
-    if not value_map:
-        return value
-
-    # Try exact match first (handles bool True/False from coil reads)
-    if value in value_map:
-        return value_map[value]
-
-    # Try numeric key (YAML may parse "2" as int 2, decoded value may be float 2.0)
-    try:
-        as_int = int(value)
-        if as_int in value_map:
-            return value_map[as_int]
-        # Also try string representation
-        as_str = str(as_int)
-        if as_str in value_map:
-            return value_map[as_str]
-    except (ValueError, TypeError):
-        pass
-
-    return value
-
-
-def _entity_register_count(entity: dict) -> int:
-    """Return number of registers consumed by this entity."""
+def _reg_count(entity: dict) -> int:
+    """Return number of 16-bit registers consumed by this entity."""
     data_type = entity.get("data_type", DATA_TYPE_UINT16)
     if data_type == DATA_TYPE_STRING:
         return entity.get("register_count", 8)
-    from .const import DATA_TYPE_REGISTER_COUNT
-    return DATA_TYPE_REGISTER_COUNT.get(data_type, 1)
+    return REGISTER_COUNT.get(data_type, 1)

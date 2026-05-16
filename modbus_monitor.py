@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """
-Modbus RTU register monitor — supports both legacy JSON presets and
-HA-compatible device-definition YAML files.
+Modbus register monitor — RTU (serial) and TCP (Ethernet/WiFi).
 
 Usage:
-    modbus-monitor                                    # port picker, default preset
-    modbus-monitor --port /dev/ttyUSB0
-    modbus-monitor --port /dev/ttyUSB0 --preset path/to/device.yaml
-    modbus-monitor --port /dev/ttyUSB0 --preset legacy.json
+    modbus-monitor path/to/device.yaml
+    modbus-monitor --port /dev/ttyUSB0 --slave 1 path/to/device.yaml
+    modbus-monitor --host 192.168.1.100 --slave 1 path/to/device.yaml
+    modbus-monitor --host 192.168.1.100 --tcp-port 502 --slave 1 path/to/device.yaml
 """
 
 import argparse
 import curses
-import json
 import logging
 import sys
 import threading
@@ -24,7 +22,7 @@ from pathlib import Path
 logging.getLogger("pymodbus").setLevel(logging.CRITICAL)
 
 try:
-    from pymodbus.client import ModbusSerialClient
+    from pymodbus.client import ModbusSerialClient, ModbusTcpClient
     from pymodbus.exceptions import ModbusException
 except ImportError:
     print("pymodbus not installed. Run: pip install pymodbus")
@@ -60,7 +58,69 @@ class _Row:
     precision: int | None = None
 
 
-# ── port selection ────────────────────────────────────────────────────────────
+# ── colors ────────────────────────────────────────────────────────────────────
+
+_COLORS_INITIALIZED = False
+_LABEL_W = 36
+_VAL_W   = 12
+
+
+def _init_colors():
+    global _COLORS_INITIALIZED
+    if _COLORS_INITIALIZED:
+        return
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_RED, -1)
+    curses.init_pair(2, curses.COLOR_CYAN, -1)
+    curses.init_pair(3, curses.COLOR_GREEN, -1)
+    curses.init_pair(4, curses.COLOR_BLACK, curses.COLOR_YELLOW)
+    curses.init_pair(5, curses.COLOR_WHITE, -1)
+    _COLORS_INITIALIZED = True
+
+
+# ── transport / connection selection ─────────────────────────────────────────
+
+def _select_transport(stdscr) -> str | None:
+    """Return 'rtu', 'tcp', or None (quit)."""
+    _init_colors()
+    curses.curs_set(0)
+    options = [
+        ("rtu", "RTU  — serial port / USB adapter"),
+        ("tcp", "TCP  — Ethernet / WiFi"),
+    ]
+    selected = 0
+    while True:
+        stdscr.erase()
+        h, w = stdscr.getmaxyx()
+        sep = "─" * min(w - 1, 60)
+        try:
+            stdscr.addstr(0, 0, "Select transport", curses.A_BOLD | curses.color_pair(2))
+            stdscr.addstr(1, 0, sep)
+        except curses.error:
+            pass
+        for i, (_, label) in enumerate(options):
+            marker = "►" if i == selected else " "
+            attr = curses.color_pair(4) | curses.A_BOLD if i == selected else curses.A_NORMAL
+            try:
+                stdscr.addstr(i + 3, 0, f"  {marker} {label}"[:w - 1], attr)
+            except curses.error:
+                pass
+        try:
+            stdscr.addstr(h - 1, 0, "↑↓ navigate · Enter select · q quit"[:w - 1])
+        except curses.error:
+            pass
+        stdscr.refresh()
+        key = stdscr.getch()
+        if key == curses.KEY_UP:
+            selected = max(0, selected - 1)
+        elif key == curses.KEY_DOWN:
+            selected = min(len(options) - 1, selected + 1)
+        elif key in (curses.KEY_ENTER, ord('\n'), ord('\r')):
+            return options[selected][0]
+        elif key in (ord('q'), ord('Q'), 27):
+            return None
+
 
 def _list_ports():
     return list(serial.tools.list_ports.comports())
@@ -68,17 +128,15 @@ def _list_ports():
 
 def _select_port(stdscr) -> str | None:
     ports = _list_ports()
+    _init_colors()
     curses.curs_set(0)
-    curses.start_color()
-    curses.use_default_colors()
-    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_CYAN)
 
     selected = 0
     while True:
         stdscr.erase()
         h, w = stdscr.getmaxyx()
         try:
-            stdscr.addstr(0, 0, "Select serial port", curses.A_BOLD)
+            stdscr.addstr(0, 0, "Select serial port", curses.A_BOLD | curses.color_pair(2))
             stdscr.addstr(1, 0, "↑↓ navigate · Enter select · q quit")
             stdscr.addstr(2, 0, "─" * min(w - 1, 60))
         except curses.error:
@@ -95,7 +153,7 @@ def _select_port(stdscr) -> str | None:
                 if row >= h - 1:
                     break
                 label = f"  {port.device:<20}  {port.description}"
-                attr = curses.color_pair(1) | curses.A_BOLD if i == selected else curses.A_NORMAL
+                attr = curses.color_pair(4) | curses.A_BOLD if i == selected else curses.A_NORMAL
                 try:
                     stdscr.addstr(row, 0, label[:w - 1], attr)
                 except curses.error:
@@ -113,17 +171,13 @@ def _select_port(stdscr) -> str | None:
             return None
 
 
-# ── preset config screens ─────────────────────────────────────────────────────
-
-def _configure_preset_json(stdscr, preset_path: str, full_preset: dict) -> dict | None:
-    """JSON mode: shows device list with editable slave IDs. Returns modified preset or None."""
+def _enter_tcp_config(stdscr, default_host: str = "", default_port: int = 502) -> tuple[str, int] | None:
+    """Interactive TCP host/port entry. Returns (host, port) or None."""
     _init_colors()
     curses.curs_set(0)
-
-    slaves    = sorted(full_preset.items(), key=lambda x: int(x[0]))
-    slave_ids = [k for k, _ in slaves]
-    cursor    = 0
-    status    = ""
+    host   = default_host
+    port   = default_port
+    status = ""
 
     while True:
         stdscr.erase()
@@ -131,12 +185,7 @@ def _configure_preset_json(stdscr, preset_path: str, full_preset: dict) -> dict 
         sep = "─" * min(w - 1, 60)
         row = 0
         try:
-            stdscr.addstr(row, 0, "Preset configuration", curses.A_BOLD | curses.color_pair(2))
-        except curses.error:
-            pass
-        row += 1
-        try:
-            stdscr.addstr(row, 0, f"  File:  {preset_path}")
+            stdscr.addstr(row, 0, "TCP connection", curses.A_BOLD | curses.color_pair(2))
         except curses.error:
             pass
         row += 1
@@ -145,24 +194,20 @@ def _configure_preset_json(stdscr, preset_path: str, full_preset: dict) -> dict 
         except curses.error:
             pass
         row += 2
+
+        host_display = host if host else "(not set)"
         try:
-            stdscr.addstr(row, 0, "  Slave ID", curses.A_BOLD)
+            stdscr.addstr(row, 0, f"  Host:  {host_display}"[:w - 1])
+            stdscr.addstr(row, w - 18, "← h to edit"[:w - 1])
         except curses.error:
             pass
         row += 1
-
-        for i, sid in enumerate(slave_ids):
-            is_sel = i == cursor
-            attr   = curses.color_pair(4) | curses.A_BOLD if is_sel else curses.A_NORMAL
-            dev_desc = slaves[i][1].get("description", "")
-            line   = f"  [ {sid} ]  {dev_desc}"
-            if is_sel:
-                line += "  ← Enter to edit"
-            try:
-                stdscr.addstr(row, 0, line[:w - 1], attr)
-            except curses.error:
-                pass
-            row += 1
+        try:
+            stdscr.addstr(row, 0, f"  Port:  {port}"[:w - 1])
+            stdscr.addstr(row, w - 18, "← p to edit"[:w - 1])
+        except curses.error:
+            pass
+        row += 1
 
         if status:
             row += 1
@@ -172,7 +217,7 @@ def _configure_preset_json(stdscr, preset_path: str, full_preset: dict) -> dict 
                 pass
 
         try:
-            stdscr.addstr(h - 1, 0, "↑↓ select · Enter edit slave ID · s start · q quit"[:w - 1])
+            stdscr.addstr(h - 1, 0, "h edit host · p edit port · s start · q quit"[:w - 1])
         except curses.error:
             pass
 
@@ -182,21 +227,28 @@ def _configure_preset_json(stdscr, preset_path: str, full_preset: dict) -> dict 
         if key in (ord('q'), ord('Q')):
             return None
         elif key in (ord('s'), ord('S')):
-            return {slave_ids[i]: regs for i, (_, regs) in enumerate(slaves)}
-        elif key == curses.KEY_UP:
-            cursor = (cursor - 1) % len(slave_ids); status = ""
-        elif key == curses.KEY_DOWN:
-            cursor = (cursor + 1) % len(slave_ids); status = ""
-        elif key in (curses.KEY_ENTER, ord('\n'), ord('\r')):
-            new_id = _prompt_int(stdscr, h, w, f"Slave ID for entry {cursor + 1}",
-                                 current=slave_ids[cursor], min_val=1, max_val=247)
-            if new_id is None:
-                status = "Edit cancelled"
-            elif str(new_id) in [sid for j, sid in enumerate(slave_ids) if j != cursor]:
-                status = f"Slave ID {new_id} already used"
+            if not host:
+                status = "Host required — press h to enter IP address"
             else:
-                slave_ids[cursor] = str(new_id); status = ""
+                return (host, port)
+        elif key in (ord('h'), ord('H'), curses.KEY_ENTER, ord('\n'), ord('\r')):
+            new_host = _prompt_text(stdscr, h, w, "Host / IP address", current=host)
+            if new_host is not None:
+                host   = new_host
+                status = ""
+            else:
+                status = "Edit cancelled"
+        elif key in (ord('p'), ord('P')):
+            new_port = _prompt_int(stdscr, h, w, "TCP port",
+                                   current=str(port), min_val=1, max_val=65535)
+            if new_port is not None:
+                port   = new_port
+                status = ""
+            else:
+                status = "Edit cancelled"
 
+
+# ── preset config screens ─────────────────────────────────────────────────────
 
 def _configure_preset_yaml(stdscr, preset_path: str, definition) -> list[int] | None:
     """YAML mode: shows device info and single editable slave ID. Returns [slave_id] or None."""
@@ -280,45 +332,6 @@ def _configure_preset_yaml(stdscr, preset_path: str, definition) -> list[int] | 
 
 # ── register reading ──────────────────────────────────────────────────────────
 
-def _consecutive_groups(entries: list) -> list[list]:
-    """Split list of dicts (with 'addr' key) into groups of consecutive addresses."""
-    if not entries:
-        return []
-    ordered = sorted(entries, key=lambda e: e["addr"])
-    groups, cur = [], [ordered[0]]
-    for e in ordered[1:]:
-        if e["addr"] == cur[-1]["addr"] + 1:
-            cur.append(e)
-        else:
-            groups.append(cur)
-            cur = [e]
-    groups.append(cur)
-    return groups
-
-
-def read_registers(client, slave_id: int, preset: dict) -> dict:
-    """JSON mode: read preset registers, return {key_str: raw_value}."""
-    results = {}
-
-    def _batch(entries, read_fn, result_attr, prefix):
-        for group in _consecutive_groups(entries):
-            start = group[0]["addr"]
-            try:
-                r    = read_fn(start, count=len(group), device_id=slave_id)
-                vals = getattr(r, result_attr) if not r.isError() else None
-            except ModbusException:
-                vals = None
-            for i, entry in enumerate(group):
-                key          = f"{prefix} {entry['addr']:02d} {entry['label']}"
-                results[key] = vals[i] if vals is not None else "ERR"
-
-    _batch(preset.get("holding", []),        client.read_holding_registers, "registers", "HR")
-    _batch(preset.get("input", []),           client.read_input_registers,   "registers", "IR")
-    _batch(preset.get("coils", []),           client.read_coils,             "bits",      "CO")
-    _batch(preset.get("descrete_inputs", []), client.read_discrete_inputs,   "bits",      "DI")
-    return results
-
-
 def _yaml_consecutive_groups(entities: list) -> list[list]:
     """Group EntityDef objects by consecutive .address."""
     if not entities:
@@ -357,7 +370,6 @@ def read_from_definition(client, slave_id: int, definition) -> dict:
 
         hint = definition.polling.get(reg_type)
         if hint:
-            # One bulk read covering the whole polling window
             try:
                 r    = read_fn(hint.start_address, count=hint.count, device_id=slave_id)
                 pool = list(getattr(r, attr)) if not r.isError() else None
@@ -381,7 +393,6 @@ def read_from_definition(client, slave_id: int, definition) -> dict:
                 except Exception:
                     results[entity.id] = "ERR"
         else:
-            # Auto-group consecutive single-register entities; read multi-reg individually
             single = sorted([e for e in entities if REGISTER_COUNT.get(e.data_type, 1) == 1],
                             key=lambda e: e.address)
             multi  = [e for e in entities if REGISTER_COUNT.get(e.data_type, 1) > 1]
@@ -440,33 +451,6 @@ def write_holding(client, slave_id: int, addr: int, value: int) -> None:
 
 # ── row builders ──────────────────────────────────────────────────────────────
 
-def _rows_from_json(full_preset: dict) -> list[_Row]:
-    rows = []
-    for slave_id_str, preset in sorted(full_preset.items(), key=lambda x: int(x[0])):
-        slave_id = int(slave_id_str)
-        for entry in preset.get("holding", []):
-            a, lbl = entry["addr"], entry["label"]
-            rows.append(_Row(key=f"HR {a:02d} {lbl}", label=f"HR {a:02d} {lbl}",
-                             unit="", desc=entry.get("description", ""),
-                             nav="edit", reg_addr=a, slave_id=slave_id))
-        for entry in preset.get("input", []):
-            a, lbl = entry["addr"], entry["label"]
-            rows.append(_Row(key=f"IR {a:02d} {lbl}", label=f"IR {a:02d} {lbl}",
-                             unit="", desc=entry.get("description", ""),
-                             nav=None, reg_addr=a, slave_id=slave_id))
-        for entry in preset.get("coils", []):
-            a, lbl = entry["addr"], entry["label"]
-            rows.append(_Row(key=f"CO {a:02d} {lbl}", label=f"CO {a:02d} {lbl}",
-                             unit="", desc=entry.get("description", ""),
-                             nav="toggle", reg_addr=a, slave_id=slave_id))
-        for entry in preset.get("descrete_inputs", []):
-            a, lbl = entry["addr"], entry["label"]
-            rows.append(_Row(key=f"DI {a:02d} {lbl}", label=f"DI {a:02d} {lbl}",
-                             unit="", desc=entry.get("description", ""),
-                             nav=None, reg_addr=a, slave_id=slave_id))
-    return rows
-
-
 def _rows_from_yaml(definition, slave_ids: list[int]) -> list[_Row]:
     rows = []
     for slave_id in slave_ids:
@@ -498,16 +482,14 @@ def _yaml_nav(entity) -> str | None:
 # ── polling thread ────────────────────────────────────────────────────────────
 
 class _Poller(threading.Thread):
-    def __init__(self, client, interval: float,
-                 full_preset=None, definition=None, slave_ids=None):
+    def __init__(self, client, interval: float, definition, slave_ids: list[int]):
         super().__init__(daemon=True)
-        self.client      = client
-        self.interval    = interval
-        self.full_preset = full_preset    # JSON mode
-        self.definition  = definition     # YAML mode
-        self.slave_ids   = slave_ids or []
-        self._stop       = threading.Event()
-        self._lock       = threading.Lock()
+        self.client     = client
+        self.interval   = interval
+        self.definition = definition
+        self.slave_ids  = slave_ids
+        self._stop      = threading.Event()
+        self._lock      = threading.Lock()
         self._data: dict = {}
 
     def stop(self):
@@ -519,29 +501,18 @@ class _Poller(threading.Thread):
 
     def run(self):
         while not self._stop.is_set():
-            if self.full_preset is not None:
-                for slave_id_str, preset in self.full_preset.items():
-                    if self._stop.is_set():
-                        return
-                    slave_id = int(slave_id_str)
-                    t0   = time.monotonic()
-                    data = read_registers(self.client, slave_id, preset)
-                    elapsed = int((time.monotonic() - t0) * 1000)
-                    with self._lock:
-                        self._data[slave_id] = (data, elapsed)
-            else:
-                for slave_id in self.slave_ids:
-                    if self._stop.is_set():
-                        return
-                    t0   = time.monotonic()
-                    data = read_from_definition(self.client, slave_id, self.definition)
-                    elapsed = int((time.monotonic() - t0) * 1000)
-                    with self._lock:
-                        self._data[slave_id] = (data, elapsed)
+            for slave_id in self.slave_ids:
+                if self._stop.is_set():
+                    return
+                t0      = time.monotonic()
+                data    = read_from_definition(self.client, slave_id, self.definition)
+                elapsed = int((time.monotonic() - t0) * 1000)
+                with self._lock:
+                    self._data[slave_id] = (data, elapsed)
             self._stop.wait(self.interval)
 
 
-# ── inline editor ─────────────────────────────────────────────────────────────
+# ── inline editors ────────────────────────────────────────────────────────────
 
 def _prompt_int(stdscr, h: int, w: int, label: str,
                 current: str = "", min_val: int | None = None,
@@ -583,26 +554,34 @@ def _prompt_int(stdscr, h: int, w: int, label: str,
         curses.halfdelay(2)
 
 
+def _prompt_text(stdscr, h: int, w: int, label: str, current: str = "") -> str | None:
+    buf = current
+    curses.curs_set(1)
+    curses.cbreak()
+    try:
+        while True:
+            prompt = f" {label} → {buf}▌  (Enter confirm · Esc cancel)"
+            try:
+                stdscr.addstr(h - 1, 0, " " * (w - 1))
+                stdscr.addstr(h - 1, 0, prompt[:w - 1], curses.A_REVERSE)
+            except curses.error:
+                pass
+            stdscr.refresh()
+            key = stdscr.getch()
+            if key in (ord('\n'), ord('\r'), curses.KEY_ENTER):
+                return buf if buf else None
+            elif key == 27:
+                return None
+            elif key in (curses.KEY_BACKSPACE, 127, 8):
+                buf = buf[:-1]
+            elif 32 <= key <= 126:
+                buf += chr(key)
+    finally:
+        curses.curs_set(0)
+        curses.halfdelay(2)
+
+
 # ── rendering ─────────────────────────────────────────────────────────────────
-
-_COLORS_INITIALIZED = False
-_LABEL_W = 36
-_VAL_W   = 12
-
-
-def _init_colors():
-    global _COLORS_INITIALIZED
-    if _COLORS_INITIALIZED:
-        return
-    curses.start_color()
-    curses.use_default_colors()
-    curses.init_pair(1, curses.COLOR_RED, -1)
-    curses.init_pair(2, curses.COLOR_CYAN, -1)
-    curses.init_pair(3, curses.COLOR_GREEN, -1)
-    curses.init_pair(4, curses.COLOR_BLACK, curses.COLOR_YELLOW)
-    curses.init_pair(5, curses.COLOR_WHITE, -1)
-    _COLORS_INITIALIZED = True
-
 
 def _render(stdscr, title: str, all_data: dict, rows: list[_Row],
             nav_items: list[_Row], cursor: int, status_msg: str):
@@ -624,7 +603,6 @@ def _render(stdscr, title: str, all_data: dict, rows: list[_Row],
         if scr_row >= h - 2:
             break
 
-        # Slave header when slave changes
         if row.slave_id != current_slave:
             current_slave = row.slave_id
             elapsed = all_data.get(row.slave_id, ({}, 0))[1]
@@ -643,7 +621,6 @@ def _render(stdscr, title: str, all_data: dict, rows: list[_Row],
 
         value = all_data.get(row.slave_id, ({}, 0))[0].get(row.key, "?")
 
-        # Format value
         if _YAML_SUPPORT and row.unit:
             val_display = format_value(value, row.precision, row.unit)
         else:
@@ -699,19 +676,40 @@ def _render(stdscr, title: str, all_data: dict, rows: list[_Row],
 
 # ── monitor loop ──────────────────────────────────────────────────────────────
 
-def _run_monitor(stdscr, args, rows, poller_kwargs, title):
+def _build_client(conn_info: dict):
+    """Create and return the appropriate Modbus client (not yet connected)."""
+    if conn_info["type"] == "tcp":
+        return ModbusTcpClient(
+            host=conn_info["host"],
+            port=conn_info["port"],
+            timeout=3,
+        )
+    return ModbusSerialClient(
+        port=conn_info["port"],
+        baudrate=conn_info["baud"],
+        bytesize=8, parity="N", stopbits=1, timeout=0.3,
+    )
+
+
+def _conn_label(conn_info: dict) -> str:
+    if conn_info["type"] == "tcp":
+        return f"{conn_info['host']}:{conn_info['port']}"
+    return conn_info["port"]
+
+
+def _run_monitor(stdscr, interval: float, conn_info: dict,
+                 rows: list[_Row], poller_kwargs: dict, title: str):
     curses.curs_set(0)
     curses.halfdelay(2)
 
-    client = ModbusSerialClient(
-        port=args.port, baudrate=args.baud,
-        bytesize=8, parity="N", stopbits=1, timeout=0.3,
-    )
+    conn_str = _conn_label(conn_info)
+    client   = _build_client(conn_info)
+
     if not client.connect():
         curses.nocbreak()
         stdscr.clear()
         try:
-            stdscr.addstr(0, 0, f"Failed to connect to {args.port}. Press any key.")
+            stdscr.addstr(0, 0, f"Failed to connect to {conn_str}. Press any key.")
         except curses.error:
             pass
         stdscr.refresh()
@@ -723,7 +721,7 @@ def _run_monitor(stdscr, args, rows, poller_kwargs, title):
     status_msg   = ""
     status_until = 0.0
 
-    poller = _Poller(client, args.interval, **poller_kwargs)
+    poller = _Poller(client, interval, **poller_kwargs)
     poller.start()
 
     try:
@@ -778,7 +776,7 @@ def _run_monitor(stdscr, args, rows, poller_kwargs, title):
             else:
                 try:
                     stdscr.erase()
-                    stdscr.addstr(0, 0, f"Connecting to {args.port}…")
+                    stdscr.addstr(0, 0, f"Connecting to {conn_str}…")
                     stdscr.refresh()
                 except curses.error:
                     pass
@@ -794,47 +792,84 @@ def _run_monitor(stdscr, args, rows, poller_kwargs, title):
 # ── entry point ───────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="Modbus RTU register monitor")
-    parser.add_argument("--port",     default=None,                      help="Serial port; omit for interactive picker")
-    parser.add_argument("--baud",     type=int,   default=9600,          help="Baud rate (default: 9600)")
-    parser.add_argument("--preset",   default="simulator-preset.json",   help="Register preset (.json) or device definition (.yaml)")
-    parser.add_argument("--interval", type=float, default=0.5,           help="Refresh interval in seconds (default: 0.5)")
+    parser = argparse.ArgumentParser(description="Modbus register monitor — RTU and TCP")
+    parser.add_argument("preset_pos", nargs="?", metavar="PRESET",
+                        help="Device definition YAML file")
+    parser.add_argument("--preset",    default=None,
+                        help="Same as positional PRESET (flag form)")
+    # RTU options
+    parser.add_argument("--port",      default=None,
+                        help="Serial port for RTU, e.g. /dev/ttyUSB0 or COM3; omit for interactive picker")
+    parser.add_argument("--baud",      type=int, default=9600,
+                        help="Baud rate for RTU (default: 9600)")
+    # TCP options
+    parser.add_argument("--host",      default=None,
+                        help="Host / IP address for TCP mode, e.g. 192.168.1.100")
+    parser.add_argument("--tcp-port",  type=int, default=502,
+                        help="TCP port (default: 502)")
+    # Common
+    parser.add_argument("--slave",     type=int, default=None, metavar="ID",
+                        help="Slave / unit ID 1–247 (YAML mode); skips the config screen")
+    parser.add_argument("--interval",  type=float, default=0.5,
+                        help="Refresh interval in seconds (default: 0.5)")
     args = parser.parse_args()
 
-    if args.port is None:
-        args.port = curses.wrapper(_select_port)
-        if args.port is None:
-            print("No port selected. Exiting.")
-            sys.exit(0)
+    if args.port and args.host:
+        parser.error("--port and --host are mutually exclusive; pick one transport")
 
-    preset_path = Path(args.preset)
+    # Resolve preset: positional arg takes priority over --preset flag
+    preset_str = args.preset_pos or args.preset
+    if not preset_str:
+        parser.error("PRESET argument is required")
+    preset_path = Path(preset_str)
     if not preset_path.exists():
-        print(f"Preset file not found: {preset_path}")
+        print(f"Device definition file not found: {preset_path}")
+        sys.exit(1)
+    if preset_path.suffix not in (".yaml", ".yml"):
+        print(f"Expected a YAML file (.yaml / .yml), got: {preset_path.name}")
         sys.exit(1)
 
-    if preset_path.suffix in (".yaml", ".yml"):
-        if not _YAML_SUPPORT:
-            print("YAML support requires modbus_device library. Run: pip install -e ../modbus_device")
-            sys.exit(1)
-        definition = load_device_definition(preset_path)
-        slave_ids  = curses.wrapper(_configure_preset_yaml, str(preset_path), definition)
+    # Resolve connection
+    if args.host:
+        conn_info = {"type": "tcp", "host": args.host, "port": args.tcp_port}
+    elif args.port:
+        conn_info = {"type": "rtu", "port": args.port, "baud": args.baud}
+    else:
+        # Interactive transport selection
+        transport = curses.wrapper(_select_transport)
+        if transport is None:
+            sys.exit(0)
+        if transport == "tcp":
+            tcp_cfg = curses.wrapper(_enter_tcp_config)
+            if tcp_cfg is None:
+                sys.exit(0)
+            conn_info = {"type": "tcp", "host": tcp_cfg[0], "port": tcp_cfg[1]}
+        else:
+            port = curses.wrapper(_select_port)
+            if port is None:
+                sys.exit(0)
+            conn_info = {"type": "rtu", "port": port, "baud": args.baud}
+
+    # Load device definition
+    if not _YAML_SUPPORT:
+        print("modbus_device library not found — reinstall: pipx install . --force")
+        sys.exit(1)
+    definition      = load_device_definition(preset_path)
+    transport_label = _conn_label(conn_info)
+
+    if args.slave is not None:
+        slave_ids = [args.slave]
+    else:
+        slave_ids = curses.wrapper(_configure_preset_yaml, str(preset_path), definition)
         if slave_ids is None:
             sys.exit(0)
-        rows          = _rows_from_yaml(definition, slave_ids)
-        poller_kwargs = {"definition": definition, "slave_ids": slave_ids}
-        title = (f"Modbus RTU Monitor  {definition.name}  "
-                 f"{preset_path.name}  {time.strftime('%H:%M:%S')}")
-    else:
-        with open(preset_path) as f:
-            full_preset = json.load(f)
-        full_preset = curses.wrapper(_configure_preset_json, str(preset_path), full_preset)
-        if full_preset is None:
-            sys.exit(0)
-        rows          = _rows_from_json(full_preset)
-        poller_kwargs = {"full_preset": full_preset}
-        title = f"Modbus RTU Monitor  preset: {preset_path.name}  {time.strftime('%H:%M:%S')}"
 
-    curses.wrapper(_run_monitor, args, rows, poller_kwargs, title)
+    rows          = _rows_from_yaml(definition, slave_ids)
+    poller_kwargs = {"definition": definition, "slave_ids": slave_ids}
+    title = (f"Modbus Monitor  {definition.name}  "
+             f"{transport_label}  {time.strftime('%H:%M:%S')}")
+
+    curses.wrapper(_run_monitor, args.interval, conn_info, rows, poller_kwargs, title)
 
 
 if __name__ == "__main__":
