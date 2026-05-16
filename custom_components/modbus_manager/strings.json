@@ -1,0 +1,111 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Modbus Manager — Bus Type",
+        "description": "Select the connection type for this Modbus bus.",
+        "data": {
+          "bus_type": "Connection type"
+        }
+      },
+      "rtu": {
+        "title": "Modbus RTU (Serial/USB)",
+        "data": {
+          "port": "Serial port (e.g. /dev/ttyUSB0)",
+          "baudrate": "Baud rate",
+          "parity": "Parity",
+          "stopbits": "Stop bits",
+          "bytesize": "Byte size",
+          "timeout": "Timeout (seconds)"
+        }
+      },
+      "tcp": {
+        "title": "Modbus TCP (Ethernet/WiFi)",
+        "data": {
+          "host": "Host or IP address",
+          "tcp_port": "TCP port",
+          "timeout": "Timeout (seconds)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This bus is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Manage Devices",
+        "menu_options": {
+          "add_device": "Add device",
+          "edit_device": "Edit device",
+          "remove_device": "Remove device",
+          "finish": "Save and close"
+        }
+      },
+      "add_device": {
+        "title": "Add Device — Basic Info",
+        "description": "Poll interval: how often this device is read. Range 0.5–3600 s.",
+        "data": {
+          "device_name": "Device name",
+          "slave_id": "Modbus slave ID (1–247)",
+          "scan_interval": "Poll interval (seconds)"
+        }
+      },
+      "edit_device": {
+        "title": "Edit Device — Select",
+        "data": {
+          "device_id": "Device to edit"
+        }
+      },
+      "edit_device_form": {
+        "title": "Edit Device — {device_name}",
+        "description": "Poll interval: how often this device is read. Range 0.5–3600 s.",
+        "data": {
+          "device_name": "Device name",
+          "slave_id": "Modbus slave ID (1–247)",
+          "scan_interval": "Poll interval (seconds)"
+        }
+      },
+      "choose_definition": {
+        "title": "Device Definition",
+        "data": {
+          "definition_source": "Source"
+        }
+      },
+      "select_builtin": {
+        "title": "Select Built-in Device",
+        "data": {
+          "definition_file": "Device type"
+        }
+      },
+      "device_params": {
+        "title": "Device Parameters — {device_name}",
+        "description": "This device requires additional configuration:\n\n{params_info}"
+      },
+      "upload_custom": {
+        "title": "Custom YAML Definition",
+        "description": "Paste your device definition in YAML format.\n\nExample:\n```yaml\n{example}\n```",
+        "data": {
+          "definition_yaml": "YAML definition"
+        }
+      },
+      "remove_device": {
+        "title": "Remove Device",
+        "data": {
+          "device_id": "Device to remove"
+        }
+      }
+    },
+    "abort": {
+      "no_builtin_definitions": "No built-in device definitions found.",
+      "definition_not_found": "Selected definition file not found.",
+      "no_devices": "No devices configured on this bus."
+    },
+    "error": {
+      "invalid_yaml": "Invalid YAML format.",
+      "invalid_definition": "YAML is valid but missing required 'entities' key.",
+      "duplicate_slave_id": "A device with this slave ID is already configured on this bus."
+    }
+  }
+}

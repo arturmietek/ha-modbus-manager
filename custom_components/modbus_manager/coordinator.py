@@ -1,0 +1,522 @@
+"""DataUpdateCoordinator for Modbus Manager."""
+from __future__ import annotations
+
+import logging
+import struct
+import time
+from datetime import timedelta
+from typing import Any
+
+from pymodbus.client import AsyncModbusSerialClient, AsyncModbusTcpClient
+from pymodbus.exceptions import ModbusException
+
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
+from .const import (
+    CONF_BUS_TYPE_RTU,
+    CONF_HOST,
+    CONF_TCP_PORT,
+    CONF_PORT,
+    CONF_BAUDRATE,
+    CONF_PARITY,
+    CONF_STOPBITS,
+    CONF_BYTESIZE,
+    CONF_TIMEOUT,
+    CONF_DEVICES,
+    CONF_SLAVE_ID,
+    CONF_DEVICE_ID,
+    CONF_SCAN_INTERVAL,
+    CONF_DEFINITION,
+    CONF_DEVICE_PARAMS,
+    DEFAULT_SCAN_INTERVAL,
+    REGISTER_COIL,
+    REGISTER_DISCRETE_INPUT,
+    REGISTER_HOLDING,
+    REGISTER_INPUT,
+    DATA_TYPE_INT16,
+    DATA_TYPE_UINT16,
+    DATA_TYPE_INT32,
+    DATA_TYPE_UINT32,
+    DATA_TYPE_FLOAT32,
+    DATA_TYPE_INT64,
+    DATA_TYPE_STRING,
+    BYTE_ORDER_BIG,
+    BYTE_ORDER_LITTLE,
+    BYTE_ORDER_BIG_SWAP,
+    BYTE_ORDER_LITTLE_SWAP,
+    DOMAIN,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+# Sentinel returned by _validate_and_track when the value should be withheld entirely
+# (validation failed with no prior good value). Distinct from None which is a valid
+# mapped value (e.g. STATUS_UNKNOWN mapped to null in YAML).
+_WITHHELD = object()
+
+
+def _eval_param_expr(value: Any, params: dict[str, float]) -> Any:
+    """Evaluate a {expression} string against device params; return value unchanged if not an expression."""
+    if not isinstance(value, str) or "{" not in value:
+        return value
+    expr = value.strip("{}").strip()
+    try:
+        return eval(expr, {"__builtins__": {}}, params)  # noqa: S307
+    except Exception:  # noqa: BLE001
+        _LOGGER.warning("Failed to evaluate parameter expression %r with params %s", value, params)
+        return value
+
+
+def _apply_device_params(device: dict) -> dict:
+    """Bake device_params into entity validation fields by resolving {expr} placeholders."""
+    params: dict[str, float] = device.get(CONF_DEVICE_PARAMS, {})
+    if not params:
+        return device
+
+    definition = device.get(CONF_DEFINITION, {})
+    resolved_entities = []
+    for entity in definition.get("entities", []):
+        validation = entity.get("validation")
+        if not validation:
+            resolved_entities.append(entity)
+            continue
+        entity = dict(entity)
+        entity["validation"] = {k: _eval_param_expr(v, params) for k, v in validation.items()}
+        resolved_entities.append(entity)
+
+    device = dict(device)
+    device[CONF_DEFINITION] = {**definition, "entities": resolved_entities}
+    return device
+
+
+def _decode_registers(registers: list[int], data_type: str, byte_order: str, scale: float = 1.0) -> Any:
+    """Decode raw Modbus register values into a Python value."""
+    if data_type == DATA_TYPE_UINT16:
+        return registers[0] * scale
+
+    if data_type == DATA_TYPE_INT16:
+        raw = registers[0]
+        value = raw if raw < 0x8000 else raw - 0x10000
+        return value * scale
+
+    if len(registers) < 2 and data_type in (DATA_TYPE_INT32, DATA_TYPE_UINT32, DATA_TYPE_FLOAT32):
+        raise ValueError(f"Not enough registers for {data_type}")
+
+    # Pack register words according to byte order
+    if byte_order == BYTE_ORDER_BIG:
+        word_bytes = struct.pack(">HH", registers[0], registers[1])
+    elif byte_order == BYTE_ORDER_LITTLE:
+        word_bytes = struct.pack(">HH", registers[1], registers[0])
+    elif byte_order == BYTE_ORDER_BIG_SWAP:
+        # words in big-endian order, bytes within each word swapped
+        word_bytes = struct.pack(">HH", _swap_bytes(registers[0]), _swap_bytes(registers[1]))
+    elif byte_order == BYTE_ORDER_LITTLE_SWAP:
+        word_bytes = struct.pack(">HH", _swap_bytes(registers[1]), _swap_bytes(registers[0]))
+    else:
+        word_bytes = struct.pack(">HH", registers[0], registers[1])
+
+    if data_type == DATA_TYPE_FLOAT32:
+        (value,) = struct.unpack(">f", word_bytes)
+        return round(value * scale, 6)
+
+    if data_type == DATA_TYPE_INT32:
+        (value,) = struct.unpack(">i", word_bytes)
+        return value * scale
+
+    if data_type == DATA_TYPE_UINT32:
+        (value,) = struct.unpack(">I", word_bytes)
+        return value * scale
+
+    if data_type == DATA_TYPE_INT64:
+        if len(registers) < 4:
+            raise ValueError("Not enough registers for INT64")
+        if byte_order in (BYTE_ORDER_BIG, BYTE_ORDER_BIG_SWAP):
+            word_bytes = struct.pack(">HHHH", *registers[:4])
+        else:
+            word_bytes = struct.pack(">HHHH", *reversed(registers[:4]))
+        (value,) = struct.unpack(">q", word_bytes)
+        return value * scale
+
+    if data_type == DATA_TYPE_STRING:
+        chars = []
+        for reg in registers:
+            high = (reg >> 8) & 0xFF
+            low = reg & 0xFF
+            if high:
+                chars.append(chr(high))
+            if low:
+                chars.append(chr(low))
+        return "".join(chars).strip("\x00")
+
+    return registers[0] * scale
+
+
+def _swap_bytes(word: int) -> int:
+    return ((word & 0xFF) << 8) | ((word >> 8) & 0xFF)
+
+
+class ModbusManagerCoordinator(DataUpdateCoordinator):
+    """Polls a single Modbus bus and all devices attached to it."""
+
+    def __init__(self, hass: HomeAssistant, bus_config: dict, devices: list[dict]) -> None:
+        self._bus_config = bus_config
+        self._devices = [_apply_device_params(d) for d in devices]
+        self._client: AsyncModbusSerialClient | AsyncModbusTcpClient | None = None
+        # Consecutive failure count per device_id; warning only after OFFLINE_WARN_THRESHOLD
+        self._failure_counts: dict[str, int] = {}
+        self._offline_warn_threshold: int = bus_config.get("offline_warn_threshold", 3)
+        # Per-register-group error counts: device_id → start_addr → consecutive_failures
+        self._reg_error_counts: dict[str, dict[int, int]] = {}
+        # Last known-good value per device_id → entity_id; returned on validation failure
+        self._last_valid: dict[str, dict[str, Any]] = {}
+
+        self._bus_scan_interval: float = float(bus_config.get("scan_interval", DEFAULT_SCAN_INTERVAL))
+
+        # Per-device poll interval: explicit > YAML definition hint > bus default
+        self._device_intervals: dict[str, float] = {
+            d[CONF_DEVICE_ID]: float(
+                d.get(CONF_SCAN_INTERVAL)
+                or d.get(CONF_DEFINITION, {}).get("scan_interval")
+                or self._bus_scan_interval
+            )
+            for d in self._devices
+        }
+        # Monotonic timestamps of the last completed poll per device
+        self._last_polled: dict[str, float] = {}
+
+        # Coordinator fires at the fastest device interval so no device is starved
+        effective_interval = min(self._device_intervals.values(), default=self._bus_scan_interval)
+
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=DOMAIN,
+            update_interval=timedelta(seconds=effective_interval),
+        )
+
+    @property
+    def devices(self) -> list[dict]:
+        return self._devices
+
+    def _build_client(self) -> AsyncModbusSerialClient | AsyncModbusTcpClient:
+        bus_type = self._bus_config.get("bus_type")
+        timeout = self._bus_config.get(CONF_TIMEOUT, 3)
+
+        if bus_type == CONF_BUS_TYPE_RTU:
+            return AsyncModbusSerialClient(
+                port=self._bus_config[CONF_PORT],
+                baudrate=self._bus_config[CONF_BAUDRATE],
+                parity=self._bus_config[CONF_PARITY],
+                stopbits=self._bus_config[CONF_STOPBITS],
+                bytesize=self._bus_config[CONF_BYTESIZE],
+                timeout=timeout,
+            )
+        else:
+            return AsyncModbusTcpClient(
+                host=self._bus_config[CONF_HOST],
+                port=self._bus_config[CONF_TCP_PORT],
+                timeout=timeout,
+            )
+
+    async def async_connect(self) -> bool:
+        """Open connection to the Modbus bus."""
+        self._client = self._build_client()
+        connected = await self._client.connect()
+        if not connected:
+            _LOGGER.error("Could not connect to Modbus bus: %s", self._bus_config)
+        return connected
+
+    async def async_disconnect(self) -> None:
+        if self._client:
+            self._client.close()
+            self._client = None
+
+    async def _async_update_data(self) -> dict[str, dict[str, Any]]:
+        """Fetch data from all devices on this bus."""
+        if not self._client or not self._client.connected:
+            connected = await self.async_connect()
+            if not connected:
+                raise UpdateFailed("Cannot connect to Modbus bus")
+
+        result: dict[str, dict[str, Any]] = {}
+        now = time.monotonic()
+
+        for device in self._devices:
+            device_id: str = device[CONF_DEVICE_ID]
+            slave_id: int = device[CONF_SLAVE_ID]
+            definition: dict = device[CONF_DEFINITION]
+
+            # Skip devices whose poll interval has not elapsed yet
+            device_interval = self._device_intervals.get(device_id, self._bus_scan_interval)
+            last = self._last_polled.get(device_id, 0.0)
+            if self.data is not None and (now - last) < device_interval:
+                result[device_id] = self.data.get(device_id, {})
+                continue
+            self._last_polled[device_id] = now
+
+            try:
+                device_data = await self._poll_device(slave_id, definition, device_id=device_id)
+                if device_id in self._failure_counts:
+                    _LOGGER.info("Device %s (slave %d) back online", device_id, slave_id)
+                    del self._failure_counts[device_id]
+                result[device_id] = device_data
+            except ModbusException as err:
+                fail_count = self._failure_counts.get(device_id, 0) + 1
+                self._failure_counts[device_id] = fail_count
+                if fail_count == self._offline_warn_threshold:
+                    _LOGGER.warning(
+                        "Device %s (slave %d) offline for %d consecutive polls: %s",
+                        device_id, slave_id, fail_count, err,
+                    )
+                elif fail_count > self._offline_warn_threshold:
+                    _LOGGER.debug("Device %s (slave %d) still offline (attempt %d)", device_id, slave_id, fail_count)
+                else:
+                    _LOGGER.debug("Device %s (slave %d) missed poll %d/%d: %s", device_id, slave_id, fail_count, self._offline_warn_threshold, err)
+                result[device_id] = {}
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.error("Unexpected error for device %s: %s", device_id, err)
+                result[device_id] = {}
+
+        return result
+
+    async def _poll_device(self, slave_id: int, definition: dict, device_id: str = "") -> dict[str, Any]:
+        """Read all registers for one device and return entity_id → value mapping."""
+        data: dict[str, Any] = {}
+        entities: list[dict] = definition.get("entities", [])
+        polling_hints: dict = definition.get("polling", {})
+
+        # ── Coils ─────────────────────────────────────────────────────────────
+        coil_entities = [e for e in entities if e.get("register_type") == REGISTER_COIL]
+        if coil_entities:
+            hint = polling_hints.get("coils", {})
+            start = hint.get("start_address", 0)
+            count = hint.get("count") or (max(e["address"] for e in coil_entities) - start + 1)
+            rr = await self._client.read_coils(start, count=count, device_id=slave_id)
+            if not rr.isError():
+                for entity in coil_entities:
+                    idx = entity["address"] - start
+                    if 0 <= idx < len(rr.bits):
+                        data[entity["id"]] = _apply_value_map(rr.bits[idx], entity)
+
+        # ── Discrete inputs ───────────────────────────────────────────────────
+        di_entities = [e for e in entities if e.get("register_type") == REGISTER_DISCRETE_INPUT]
+        if di_entities:
+            hint = polling_hints.get("discrete_inputs", {})
+            start = hint.get("start_address", 0)
+            count = hint.get("count") or (max(e["address"] for e in di_entities) - start + 1)
+            rr = await self._client.read_discrete_inputs(start, count=count, device_id=slave_id)
+            if not rr.isError():
+                for entity in di_entities:
+                    idx = entity["address"] - start
+                    if 0 <= idx < len(rr.bits):
+                        data[entity["id"]] = _apply_value_map(rr.bits[idx], entity)
+
+        # ── Holding registers ─────────────────────────────────────────────────
+        holding_entities = [e for e in entities if e.get("register_type") == REGISTER_HOLDING]
+        if holding_entities:
+            data.update(await self._read_register_entities(holding_entities, slave_id, is_holding=True, device_id=device_id))
+
+        # ── Input registers ───────────────────────────────────────────────────
+        input_entities = [e for e in entities if e.get("register_type") == REGISTER_INPUT]
+        if input_entities:
+            data.update(await self._read_register_entities(input_entities, slave_id, is_holding=False, device_id=device_id))
+
+        return data
+
+    async def _read_register_entities(
+        self, entities: list[dict], slave_id: int, is_holding: bool, device_id: str = ""
+    ) -> dict[str, Any]:
+        """Batch-read a list of register entities, grouping contiguous blocks."""
+        data: dict[str, Any] = {}
+
+        # Sort by address and build minimal contiguous read ranges
+        sorted_entities = sorted(entities, key=lambda e: e["address"])
+
+        groups: list[tuple[int, int, list[dict]]] = []  # (start, count, entities)
+        current_start = None
+        current_end = None
+        current_group: list[dict] = []
+
+        for entity in sorted_entities:
+            addr = entity["address"]
+            reg_count = _entity_register_count(entity)
+            entity_end = addr + reg_count - 1
+
+            if current_start is None:
+                current_start = addr
+                current_end = entity_end
+                current_group = [entity]
+            elif addr <= current_end + 1:
+                # Extend current group
+                current_end = max(current_end, entity_end)
+                current_group.append(entity)
+            else:
+                groups.append((current_start, current_end - current_start + 1, current_group))
+                current_start = addr
+                current_end = entity_end
+                current_group = [entity]
+
+        if current_start is not None:
+            groups.append((current_start, current_end - current_start + 1, current_group))
+
+        for start, count, group_entities in groups:
+            if is_holding:
+                rr = await self._client.read_holding_registers(start, count=count, device_id=slave_id)
+            else:
+                rr = await self._client.read_input_registers(start, count=count, device_id=slave_id)
+
+            if rr.isError():
+                dev_reg_counts = self._reg_error_counts.setdefault(device_id, {})
+                fail_count = dev_reg_counts.get(start, 0) + 1
+                dev_reg_counts[start] = fail_count
+                if fail_count == 1:
+                    _LOGGER.warning(
+                        "Register read error for device %s at addr %d count %d — "
+                        "further failures at this address will be suppressed (DEBUG)",
+                        device_id, start, count,
+                    )
+                else:
+                    _LOGGER.debug(
+                        "Device %s register addr %d still unavailable (attempt %d)",
+                        device_id, start, fail_count,
+                    )
+                continue
+
+            # Successful read — clear any prior error count for this group
+            dev_reg_counts = self._reg_error_counts.get(device_id, {})
+            if start in dev_reg_counts:
+                _LOGGER.info(
+                    "Device %s register addr %d count %d recovered",
+                    device_id, start, count,
+                )
+                del dev_reg_counts[start]
+
+            for entity in group_entities:
+                addr = entity["address"]
+                reg_count = _entity_register_count(entity)
+                idx = addr - start
+                raw_regs = rr.registers[idx : idx + reg_count]
+
+                if len(raw_regs) < reg_count:
+                    continue
+
+                data_type = entity.get("data_type", "UINT16")
+                byte_order = entity.get("byte_order", BYTE_ORDER_BIG)
+                scale = entity.get("scale", 1.0)
+
+                try:
+                    raw = _decode_registers(raw_regs, data_type, byte_order, scale)
+                    offset = entity.get("offset", 0)
+                    if offset:
+                        raw = raw + offset
+                    value = _apply_value_map(raw, entity)
+                    published = self._validate_and_track(value, entity, device_id)
+                    if published is not _WITHHELD:
+                        data[entity["id"]] = published
+                except Exception as err:  # noqa: BLE001
+                    _LOGGER.warning("Decode error for entity %s: %s", entity["id"], err)
+
+        return data
+
+    def _validate_and_track(self, value: Any, entity: dict, device_id: str) -> Any:
+        """Validate value against entity rules; return value to publish or last-known-good on failure.
+
+        Returns _WITHHELD sentinel when validation fails AND no prior good value exists (entity stays unavailable).
+        None is a valid publishable value (e.g. STATUS_UNKNOWN mapped to null in YAML).
+        """
+        validation: dict | None = entity.get("validation")
+        entity_id: str = entity["id"]
+
+        if not validation or not isinstance(value, (int, float)):
+            # No validation rules or non-numeric / None from value_map — always accept
+            self._last_valid.setdefault(device_id, {})[entity_id] = value
+            return value
+
+        min_val = validation.get("min")
+        max_val = validation.get("max")
+        max_delta = validation.get("max_delta")
+
+        failure_reason: str | None = None
+
+        if min_val is not None and value < min_val:
+            failure_reason = f"value {value} below min {min_val}"
+        elif max_val is not None and value > max_val:
+            failure_reason = f"value {value} above max {max_val}"
+        elif max_delta is not None:
+            prev = self._last_valid.get(device_id, {}).get(entity_id)
+            if prev is not None and isinstance(prev, (int, float)) and abs(value - prev) > max_delta:
+                failure_reason = f"delta {abs(value - prev):.4g} exceeds max_delta {max_delta} (prev={prev}, new={value})"
+
+        if failure_reason:
+            device_cache = self._last_valid.get(device_id, {})
+            if entity_id in device_cache:
+                fallback = device_cache[entity_id]
+                _LOGGER.debug("Validation failed for %s.%s: %s — publishing last valid: %s", device_id, entity_id, failure_reason, fallback)
+                return fallback
+            _LOGGER.debug("Validation failed for %s.%s: %s — no prior value, withholding", device_id, entity_id, failure_reason)
+            return _WITHHELD
+
+        self._last_valid.setdefault(device_id, {})[entity_id] = value
+        return value
+
+    async def async_write_coil(self, slave_id: int, address: int, value: bool) -> bool:
+        """Write a single coil value."""
+        if not self._client or not self._client.connected:
+            if not await self.async_connect():
+                return False
+        rr = await self._client.write_coil(address, value, device_id=slave_id)
+        return not rr.isError()
+
+    async def async_write_register(self, slave_id: int, address: int, value: int) -> bool:
+        """Write a single holding register."""
+        if not self._client or not self._client.connected:
+            if not await self.async_connect():
+                return False
+        rr = await self._client.write_register(address, value, device_id=slave_id)
+        return not rr.isError()
+
+
+def _apply_value_map(value: Any, entity: dict) -> Any:
+    """Translate a raw value through the entity's value_map if defined.
+
+    YAML keys are strings or numbers; bool values from coils/discrete inputs
+    are matched by their bool identity first, then by int (1/0).
+
+    Example YAML:
+        value_map:
+          2: "4800 bps"
+          3: "9600 bps"
+          true: "open"
+          false: "closed"
+    """
+    value_map: dict | None = entity.get("value_map")
+    if not value_map:
+        return value
+
+    # Try exact match first (handles bool True/False from coil reads)
+    if value in value_map:
+        return value_map[value]
+
+    # Try numeric key (YAML may parse "2" as int 2, decoded value may be float 2.0)
+    try:
+        as_int = int(value)
+        if as_int in value_map:
+            return value_map[as_int]
+        # Also try string representation
+        as_str = str(as_int)
+        if as_str in value_map:
+            return value_map[as_str]
+    except (ValueError, TypeError):
+        pass
+
+    return value
+
+
+def _entity_register_count(entity: dict) -> int:
+    """Return number of registers consumed by this entity."""
+    data_type = entity.get("data_type", DATA_TYPE_UINT16)
+    if data_type == DATA_TYPE_STRING:
+        return entity.get("register_count", 8)
+    from .const import DATA_TYPE_REGISTER_COUNT
+    return DATA_TYPE_REGISTER_COUNT.get(data_type, 1)

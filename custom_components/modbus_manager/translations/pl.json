@@ -1,0 +1,93 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Modbus Manager — Typ magistrali",
+        "description": "Wybierz typ połączenia dla tej magistrali Modbus.",
+        "data": {
+          "bus_type": "Typ połączenia"
+        }
+      },
+      "rtu": {
+        "title": "Modbus RTU (Serial/USB)",
+        "data": {
+          "port": "Port szeregowy (np. /dev/ttyUSB0)",
+          "baudrate": "Prędkość transmisji",
+          "parity": "Parzystość",
+          "stopbits": "Bity stopu",
+          "bytesize": "Rozmiar bajtu",
+          "timeout": "Timeout (sekundy)"
+        }
+      },
+      "tcp": {
+        "title": "Modbus TCP (Ethernet/WiFi)",
+        "data": {
+          "host": "Adres hosta lub IP",
+          "tcp_port": "Port TCP",
+          "timeout": "Timeout (sekundy)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Ta magistrala jest już skonfigurowana."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Zarządzaj urządzeniami",
+        "menu_options": {
+          "add_device": "Dodaj urządzenie",
+          "remove_device": "Usuń urządzenie",
+          "finish": "Zapisz i zamknij"
+        }
+      },
+      "add_device": {
+        "title": "Dodaj urządzenie — podstawowe info",
+        "data": {
+          "device_name": "Nazwa urządzenia",
+          "slave_id": "Modbus slave ID (1–247)"
+        }
+      },
+      "choose_definition": {
+        "title": "Definicja urządzenia",
+        "data": {
+          "definition_source": "Źródło"
+        }
+      },
+      "select_builtin": {
+        "title": "Wybierz wbudowane urządzenie",
+        "data": {
+          "definition_file": "Typ urządzenia"
+        }
+      },
+      "device_params": {
+        "title": "Parametry urządzenia — {device_name}",
+        "description": "To urządzenie wymaga dodatkowej konfiguracji:\n\n{params_info}"
+      },
+      "upload_custom": {
+        "title": "Własna definicja YAML",
+        "description": "Wklej definicję urządzenia w formacie YAML.\n\nPrzykład:\n```yaml\n{example}\n```",
+        "data": {
+          "definition_yaml": "Definicja YAML"
+        }
+      },
+      "remove_device": {
+        "title": "Usuń urządzenie",
+        "data": {
+          "device_id": "Urządzenie do usunięcia"
+        }
+      }
+    },
+    "abort": {
+      "no_builtin_definitions": "Brak wbudowanych definicji urządzeń.",
+      "definition_not_found": "Wybrany plik definicji nie istnieje.",
+      "no_devices": "Brak skonfigurowanych urządzeń na tej magistrali."
+    },
+    "error": {
+      "invalid_yaml": "Nieprawidłowy format YAML.",
+      "invalid_definition": "YAML jest poprawny, ale brakuje wymaganego klucza 'entities'.",
+      "duplicate_slave_id": "Urządzenie z tym slave ID jest już skonfigurowane na tej magistrali."
+    }
+  }
+}

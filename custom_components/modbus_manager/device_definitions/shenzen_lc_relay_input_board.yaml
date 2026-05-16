@@ -1,0 +1,136 @@
+name: "Shenzen LC Technology Relay Input Board"
+manufacturer: "Shenzen LC Technology"
+model: "8-Channel Relay + 8 Discrete Input"
+version: "1.0"
+description: >
+  8-channel relay output board with 8 discrete inputs.
+  Available in 1, 2, and 8-channel variants — all respond to the
+  8-register read (count must always be 8, otherwise the device returns
+  an error or no response).
+  Default slave ID: 22. Factory baud rate: 9600.
+
+# Device-specific polling hints
+# This board requires reading all 8 coils/inputs in a single request.
+polling:
+  coils:
+    start_address: 0
+    count: 8
+  discrete_inputs:
+    start_address: 0
+    count: 8
+
+entities:
+  # ── Discrete Inputs (read-only) ────────────────────────────────────────────
+  - id: di_1
+    name: "Discrete Input 1"
+    register_type: discrete_input
+    address: 0
+    entity_type: binary_sensor
+
+  - id: di_2
+    name: "Discrete Input 2"
+    register_type: discrete_input
+    address: 1
+    entity_type: binary_sensor
+
+  - id: di_3
+    name: "Discrete Input 3"
+    register_type: discrete_input
+    address: 2
+    entity_type: binary_sensor
+
+  - id: di_4
+    name: "Discrete Input 4"
+    register_type: discrete_input
+    address: 3
+    entity_type: binary_sensor
+
+  - id: di_5
+    name: "Discrete Input 5"
+    register_type: discrete_input
+    address: 4
+    entity_type: binary_sensor
+
+  - id: di_6
+    name: "Discrete Input 6"
+    register_type: discrete_input
+    address: 5
+    entity_type: binary_sensor
+
+  - id: di_7
+    name: "Discrete Input 7"
+    register_type: discrete_input
+    address: 6
+    entity_type: binary_sensor
+
+  - id: di_8
+    name: "Discrete Input 8"
+    register_type: discrete_input
+    address: 7
+    entity_type: binary_sensor
+
+  # ── Relay Outputs (read/write) ─────────────────────────────────────────────
+  - id: relay_1
+    name: "Relay 1"
+    register_type: coil
+    address: 0
+    entity_type: switch
+
+  - id: relay_2
+    name: "Relay 2"
+    register_type: coil
+    address: 1
+    entity_type: switch
+
+  - id: relay_3
+    name: "Relay 3"
+    register_type: coil
+    address: 2
+    entity_type: switch
+
+  - id: relay_4
+    name: "Relay 4"
+    register_type: coil
+    address: 3
+    entity_type: switch
+
+  - id: relay_5
+    name: "Relay 5"
+    register_type: coil
+    address: 4
+    entity_type: switch
+
+  - id: relay_6
+    name: "Relay 6"
+    register_type: coil
+    address: 5
+    entity_type: switch
+
+  - id: relay_7
+    name: "Relay 7"
+    register_type: coil
+    address: 6
+    entity_type: switch
+
+  - id: relay_8
+    name: "Relay 8"
+    register_type: coil
+    address: 7
+    entity_type: switch
+
+  # ── Configuration Register (read-only, poll infrequently) ──────────────────
+  - id: baud_rate
+    name: "Baud Rate Config"
+    register_type: holding
+    address: 1000
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    readonly: true
+    # Raw value: 2=4800, 3=9600, 4=19200
+    # Not scaled — raw value displayed
+    scan_interval: 3600
+    value_map:
+      2: "4800 bps"
+      3: "9600 bps"
+      4: "19200 bps"

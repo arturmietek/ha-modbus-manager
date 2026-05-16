@@ -1,0 +1,421 @@
+name: "Eastron SDM630-Modbus"
+manufacturer: "Eastron"
+model: "SDM630-Modbus"
+version: "1.0"
+description: >
+  3-phase energy meter. All registers are FLOAT32 big-endian (2 registers each).
+  Supports import/export energy, per-phase and total: voltage, current, power,
+  apparent power, reactive power, power factor, frequency, and demand values.
+
+# All input registers are FLOAT32 — coordinator will auto-batch contiguous groups:
+#   Group A: 0–35    phase measurements
+#   Group B: 42–63   averages + totals
+#   Group C: 70–75   frequency + energy
+#   Group D: 258–263 current demands
+
+entities:
+
+  # ── Phase voltages ────────────────────────────────────────────────────────
+  - id: l1_voltage
+    name: "L1 Voltage"
+    register_type: input
+    address: 0
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+
+  - id: l2_voltage
+    name: "L2 Voltage"
+    register_type: input
+    address: 2
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+
+  - id: l3_voltage
+    name: "L3 Voltage"
+    register_type: input
+    address: 4
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+
+  # ── Phase currents ────────────────────────────────────────────────────────
+  - id: l1_current
+    name: "L1 Current"
+    register_type: input
+    address: 6
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 3
+
+  - id: l2_current
+    name: "L2 Current"
+    register_type: input
+    address: 8
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 3
+
+  - id: l3_current
+    name: "L3 Current"
+    register_type: input
+    address: 10
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 3
+
+  # ── Phase active power ────────────────────────────────────────────────────
+  - id: l1_power
+    name: "L1 Power"
+    register_type: input
+    address: 12
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l2_power
+    name: "L2 Power"
+    register_type: input
+    address: 14
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l3_power
+    name: "L3 Power"
+    register_type: input
+    address: 16
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  # ── Phase apparent power ──────────────────────────────────────────────────
+  - id: l1_volt_amps
+    name: "L1 Volt Amps"
+    register_type: input
+    address: 18
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "VA"
+    device_class: apparent_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l2_volt_amps
+    name: "L2 Volt Amps"
+    register_type: input
+    address: 20
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "VA"
+    device_class: apparent_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l3_volt_amps
+    name: "L3 Volt Amps"
+    register_type: input
+    address: 22
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "VA"
+    device_class: apparent_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  # ── Phase reactive power ──────────────────────────────────────────────────
+  # NOTE: source modbus2mqtt YAML had l2 at address 24 (same as l1) — bug.
+  # Correct per SDM630 protocol: L1=24, L2=26, L3=28.
+  - id: l1_reactive_power
+    name: "L1 Reactive Power"
+    register_type: input
+    address: 24
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "var"
+    device_class: reactive_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l2_reactive_power
+    name: "L2 Reactive Power"
+    register_type: input
+    address: 26
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "var"
+    device_class: reactive_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l3_reactive_power
+    name: "L3 Reactive Power"
+    register_type: input
+    address: 28
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "var"
+    device_class: reactive_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  # ── Phase power factor ────────────────────────────────────────────────────
+  # SDM630 returns -1.0..1.0 — HA power_factor device_class expects this range.
+  # No scale needed (source used multiplier:100 + % unit which is also valid but
+  # native float -1..1 is cleaner with HA energy dashboard).
+  - id: l1_power_factor
+    name: "L1 Power Factor"
+    register_type: input
+    address: 30
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    device_class: power_factor
+    state_class: measurement
+    precision: 3
+    entity_category: diagnostic
+
+  - id: l2_power_factor
+    name: "L2 Power Factor"
+    register_type: input
+    address: 32
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    device_class: power_factor
+    state_class: measurement
+    precision: 3
+    entity_category: diagnostic
+
+  - id: l3_power_factor
+    name: "L3 Power Factor"
+    register_type: input
+    address: 34
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    device_class: power_factor
+    state_class: measurement
+    precision: 3
+    entity_category: diagnostic
+
+  # ── Averages ──────────────────────────────────────────────────────────────
+  - id: avg_line_voltage
+    name: "Average Line Voltage"
+    register_type: input
+    address: 42
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: avg_line_current
+    name: "Average Line Current"
+    register_type: input
+    address: 46
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 3
+    entity_category: diagnostic
+
+  - id: sum_line_currents
+    name: "Sum of Line Currents"
+    register_type: input
+    address: 48
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 3
+    entity_category: diagnostic
+
+  # ── Totals ────────────────────────────────────────────────────────────────
+  - id: total_power
+    name: "Total System Power"
+    register_type: input
+    address: 52
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 0
+
+  - id: total_volt_amps
+    name: "Total System Volt Amps"
+    register_type: input
+    address: 56
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "VA"
+    device_class: apparent_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: total_reactive_power
+    name: "Total System Reactive Power"
+    register_type: input
+    address: 60
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "var"
+    device_class: reactive_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: total_power_factor
+    name: "Total System Power Factor"
+    register_type: input
+    address: 62
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    device_class: power_factor
+    state_class: measurement
+    precision: 3
+    entity_category: diagnostic
+
+  # ── Frequency ─────────────────────────────────────────────────────────────
+  - id: frequency
+    name: "Frequency"
+    register_type: input
+    address: 70
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "Hz"
+    device_class: frequency
+    state_class: measurement
+    precision: 2
+
+  # ── Energy counters ───────────────────────────────────────────────────────
+  - id: total_import_kwh
+    name: "Total Import kWh"
+    register_type: input
+    address: 72
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  - id: total_export_kwh
+    name: "Total Export kWh"
+    register_type: input
+    address: 74
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  # ── Current demands ───────────────────────────────────────────────────────
+  - id: l1_current_demand
+    name: "L1 Current Demand"
+    register_type: input
+    address: 258
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l2_current_demand
+    name: "L2 Current Demand"
+    register_type: input
+    address: 260
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l3_current_demand
+    name: "L3 Current Demand"
+    register_type: input
+    address: 262
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic

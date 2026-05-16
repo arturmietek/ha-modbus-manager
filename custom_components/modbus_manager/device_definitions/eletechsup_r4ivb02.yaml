@@ -1,0 +1,99 @@
+name: "eletechsup R4IVB02"
+manufacturer: "eletechsup"
+model: "R4IVB02"
+version: "1.0"
+description: >
+  2-channel 4–20 mA current loop acquisition module via Modbus RTU.
+  All registers are holding type (FC03/FC06). Raw value × 0.01 = mA.
+  Default: 9600 baud, 8N1, slave ID 1.
+  Interpretation of mA readings (e.g. pressure → volume) is left to HA template sensors.
+
+entities:
+
+  # ── Measurements ──────────────────────────────────────────────────────────
+  - id: channel_1_current
+    name: "Channel 1 Current"
+    register_type: input
+    address: 0                 # works in practice; docs say 0x00A0=160 (unverified)
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    scale: 0.01
+    unit: "mA"
+    device_class: current
+    state_class: measurement
+    precision: 2
+
+  - id: channel_2_current
+    name: "Channel 2 Current"
+    register_type: input
+    address: 1
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    scale: 0.01
+    unit: "mA"
+    device_class: current
+    state_class: measurement
+    precision: 2
+
+  # ── Calibration ────────────────────────────────────────────────────────────
+  - id: channel_1_correction
+    name: "Channel 1 Correction"
+    register_type: holding
+    address: 192               # 0x00C0 — 1000=1:1, 1010=+1%, 990=-1%
+    entity_type: number
+    data_type: UINT16
+    byte_order: BIG
+    min: 900                   # ±10% range
+    max: 1100
+    step: 1
+    mode: box
+    entity_category: config
+
+  - id: channel_2_correction
+    name: "Channel 2 Correction"
+    register_type: holding
+    address: 193               # 0x00C1
+    entity_type: number
+    data_type: UINT16
+    byte_order: BIG
+    min: 900
+    max: 1100
+    step: 1
+    mode: box
+    entity_category: config
+
+  # ── Device configuration ───────────────────────────────────────────────────
+  - id: baud_rate
+    name: "Baud Rate"
+    register_type: holding
+    address: 254               # 0x00FE
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    readonly: true
+    entity_category: diagnostic
+    value_map:
+      0: "1200 bps"
+      1: "2400 bps"
+      2: "4800 bps"
+      3: "9600 bps"
+      4: "19200 bps"
+      5: "38400 bps"
+      6: "57600 bps"
+      7: "115200 bps"
+
+  - id: parity
+    name: "Parity"
+    register_type: holding
+    address: 255               # 0x00FF
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    readonly: true
+    entity_category: diagnostic
+    value_map:
+      0: "None"
+      1: "Even"
+      2: "Odd"

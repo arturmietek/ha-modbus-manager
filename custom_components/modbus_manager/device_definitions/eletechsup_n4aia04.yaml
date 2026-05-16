@@ -1,0 +1,122 @@
+name: "Eletechsup N4AIA04"
+manufacturer: "eletechsup"
+model: "N4AIA04"
+version: "1.0"
+description: >
+  4-channel analog acquisition module via Modbus RTU (RS-485).
+  CH1/CH2: voltage inputs (0–5 V and 0–10 V).
+  CH3/CH4: current inputs (0–20 mA, suitable for 4–20 mA loops).
+  Measurements available on both holding (FC03) and input (FC04) registers
+  at addresses 0–3. Calibration ratios at holding registers 7–10 (1000 = 1:1).
+  Default: 9600 baud, 8N1, slave ID 1.
+  Previously used for rain barrel water level via 4–20 mA pressure sensor on CH4.
+
+scan_interval: 300        # slow-changing measurements (water level, rain barrel)
+
+entities:
+
+  # ── Measurements ──────────────────────────────────────────────────────────
+  - id: ch1_voltage
+    name: "CH1 Voltage"
+    register_type: holding
+    address: 0
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    scale: 0.01
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 2
+
+  - id: ch2_voltage
+    name: "CH2 Voltage"
+    register_type: holding
+    address: 1
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    scale: 0.01
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 2
+
+  - id: ch3_current
+    name: "CH3 Current"
+    register_type: holding
+    address: 2
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    scale: 0.1
+    unit: "mA"
+    device_class: current
+    state_class: measurement
+    precision: 1
+
+  - id: ch4_current
+    name: "CH4 Current"
+    register_type: holding
+    address: 3
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    scale: 0.1
+    unit: "mA"
+    device_class: current
+    state_class: measurement
+    precision: 1
+
+  # ── Calibration ratios (writable) ─────────────────────────────────────────
+  - id: ch1_ratio
+    name: "CH1 Voltage Ratio"
+    register_type: holding
+    address: 7                  # 1000 = 1:1, 1010 = +1%, 990 = −1%
+    entity_type: number
+    data_type: UINT16
+    byte_order: BIG
+    min: 500
+    max: 2000
+    step: 1
+    mode: box
+    entity_category: config
+
+  - id: ch2_ratio
+    name: "CH2 Voltage Ratio"
+    register_type: holding
+    address: 8
+    entity_type: number
+    data_type: UINT16
+    byte_order: BIG
+    min: 500
+    max: 2000
+    step: 1
+    mode: box
+    entity_category: config
+
+  - id: ch3_ratio
+    name: "CH3 Current Ratio"
+    register_type: holding
+    address: 9
+    entity_type: number
+    data_type: UINT16
+    byte_order: BIG
+    min: 500
+    max: 2000
+    step: 1
+    mode: box
+    entity_category: config
+
+  - id: ch4_ratio
+    name: "CH4 Current Ratio"
+    register_type: holding
+    address: 10
+    entity_type: number
+    data_type: UINT16
+    byte_order: BIG
+    min: 500
+    max: 2000
+    step: 1
+    mode: box
+    entity_category: config

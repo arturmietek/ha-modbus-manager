@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "modbus-monitor"
+version = "0.1.0"
+description = "Modbus RTU CLI monitor — part of ha-modbus-manager"
+requires-python = ">=3.10"
+dependencies = [
+    "pymodbus>=3.0",
+    "pyserial>=3.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+modbus-monitor = "modbus_monitor:main"
+
+# modbus_device lives inside the HA component directory.
+# setuptools finds it there and installs it as a top-level package,
+# so the monitor can import it as `from modbus_device import ...`
+# while the HA component uses relative imports `from .modbus_device import ...`
+[tool.setuptools.packages.find]
+where = ["custom_components/modbus_manager"]
+include = ["modbus_device*"]
+
+[tool.setuptools]
+py-modules = ["modbus_monitor"]
