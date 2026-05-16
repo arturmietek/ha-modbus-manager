@@ -15,7 +15,6 @@ ha-modbus-manager/
 │       ├── device_definitions/  # Per-device YAML files
 │       └── modbus_device/       # Shared device library (bundled)
 ├── modbus_monitor.py            # CLI monitor entry point
-├── simulator-preset.json        # Example legacy JSON preset
 ├── pyproject.toml               # pip/pipx install → modbus-monitor CLI
 └── hacs.json
 ```
@@ -32,13 +31,13 @@ ha-modbus-manager/
 ### CLI monitor
 
 ```bash
-pipx install git+https://github.com/<user>/ha-modbus-manager.git
+pipx install git+https://github.com/arturmietek/ha-modbus-manager.git
 ```
 
 Or from a local clone:
 
 ```bash
-git clone https://github.com/<user>/ha-modbus-manager.git
+git clone https://github.com/arturmietek/ha-modbus-manager.git
 cd ha-modbus-manager
 pipx install .
 ```
@@ -74,7 +73,6 @@ YAML files in `custom_components/modbus_manager/device_definitions/` describe re
 
 | File | Device |
 |------|--------|
-| `modbus_gate_controller.yaml` | DIY Modbus Gate Controller |
 | `shenzen_lc_relay_input_board.yaml` | Shenzen LC 8-channel Relay + Input Board |
 | `eastron_sdm120m.yaml` | Eastron SDM120M Single-phase Energy Meter |
 | `eastron_sdm630_modbus.yaml` | Eastron SDM630 Three-phase Energy Meter |
