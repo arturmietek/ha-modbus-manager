@@ -28,3 +28,9 @@ packages = ["modbus_device"]
 
 [tool.setuptools.package-dir]
 modbus_device = "custom_components/modbus_manager/modbus_device"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
