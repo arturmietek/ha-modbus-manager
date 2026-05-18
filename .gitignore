@@ -22,5 +22,3 @@ env/
 # Home Assistant dev
 config/
 .storage/
-
-custom_components/modbus_manager/device_definitions/modbus_gate_controller.yaml
