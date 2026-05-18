@@ -1,102 +1,91 @@
 # ha-modbus-manager
 
-Modbus RTU toolkit for Home Assistant. Consists of three parts that share a common device model:
+Native Home Assistant integration for Modbus RTU (RS-485) and TCP buses. Define any Modbus device in a YAML file — sensors, switches, covers, and binary sensors appear automatically in HA with correct device classes, units, and energy dashboard support.
 
-- **Custom component** — native Home Assistant integration supporting sensors, switches, numbers, binary sensors, and covers. Device behavior is defined in per-device YAML files with register maps, scaling, value mapping, and polling hints.
-- **CLI monitor** — terminal UI for real-time register inspection and editing. Reads the same YAML device definitions. Useful for device commissioning and debugging without a running Home Assistant instance.
-- **Device library** (`modbus_device`) — shared Python package with the device definition model, YAML loader, and register decoder. Used by both the component and the monitor.
+## Installation
+
+**Via HACS** (recommended): add this repository as a custom integration repository, install *Modbus Manager*, restart HA.
+
+**Manual:**
+```bash
+scp -r custom_components/modbus_manager root@homeassistant.local:/config/custom_components/
+```
+Restart Home Assistant after copying.
+
+## Setup
+
+1. **Settings → Devices & Services → Add Integration → Modbus Manager**
+2. Choose bus type: **RTU** (USB/serial adapter) or **TCP** (Ethernet/WiFi gateway)
+3. Configure bus parameters (port/baud or host/port)
+4. In the integration options, add one or more devices (Modbus slaves):
+   - Give the device a name and slave ID
+   - Pick a built-in definition, select from your user library, or paste a custom YAML
+
+Definitions in `/config/modbus_manager/*.yaml` are picked up automatically on restart — edit them freely without re-adding devices.
+
+## Built-in devices
+
+| File | Device | Notes |
+|------|--------|-------|
+| `eastron_sdm120m.yaml` | Eastron SDM120-M | Single-phase energy meter |
+| `eastron_sdm630_modbus.yaml` | Eastron SDM630 | Three-phase energy meter, verified |
+| `sofarsolar_ktl_x.yaml` | SofarSolar KTL-X | Three-phase PV inverter, dual MPPT |
+| `sofarsolar_tl_g3.yaml` | SofarSolar TL-G3 | Single-phase PV inverter |
+| `shenzen_lc_relay_input_board.yaml` | Shenzen LC 8×relay + 8×DI | Relay + digital input board |
+| `modbus_gate_controller.yaml` | Gate/barrier controller | Cover entity |
+| `eletechsup_r4cva02.yaml` | Eletechsup R4CVA02 | 2-channel voltage (0–10 V) |
+| `eletechsup_r4ivb02.yaml` | Eletechsup R4IVB02 | 2-channel current (4–20 mA) |
+| `eletechsup_n4aia04.yaml` | Eletechsup N4AIA04 | 4-channel analog input |
+
+## Adding a new device
+
+The typical workflow: explore registers with pymodbus REPL → write YAML → verify with CLI monitor → add to HA.
+
+See **[docs/NEW_DEVICE.md](docs/NEW_DEVICE.md)** for a step-by-step guide.
+
+## YAML definition format
+
+See **[docs/YAML_FORMAT.md](docs/YAML_FORMAT.md)** for the complete field reference, valid device class / state class combinations, and worked examples. The format guide is written to be usable as an AI prompt — paste it together with a device's Modbus register map to generate a working YAML.
+
+## CLI monitor
+
+A terminal UI for real-time register inspection and editing — useful for commissioning without a running HA instance. Reads the same YAML device definitions.
+
+```bash
+# Install
+pipx install git+https://github.com/arturmietek/ha-modbus-manager.git
+
+# RTU
+modbus-monitor --port /dev/ttyUSB0 --slave 1 device.yaml
+
+# TCP
+modbus-monitor --host 192.168.1.100 --slave 1 device.yaml
+```
+
+Displays both raw register values (hex) and decoded/scaled values side by side.
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate editable registers |
+| `Space` | Toggle coil |
+| `Enter` | Edit holding register |
+| `q` | Exit |
 
 ## Repository structure
 
 ```
 ha-modbus-manager/
 ├── custom_components/
-│   └── modbus_manager/          # Home Assistant custom component (installed by HACS)
-│       ├── device_definitions/  # Per-device YAML files
-│       └── modbus_device/       # Shared device library (bundled)
-├── modbus_monitor.py            # CLI monitor entry point
-├── pyproject.toml               # pip/pipx install → modbus-monitor CLI
-└── hacs.json
+│   └── modbus_manager/          # HA custom component
+│       ├── device_definitions/  # Built-in YAML device files
+│       └── modbus_device/       # Shared decoder library
+├── docs/
+│   ├── YAML_FORMAT.md           # YAML schema reference + AI prompt
+│   └── NEW_DEVICE.md            # New device implementation workflow
+├── modbus_monitor.py            # CLI monitor
+└── pyproject.toml
 ```
 
-## Installation
+## Developer reference
 
-### Home Assistant component (via HACS)
-
-1. Add this repository as a custom HACS repository (type: Integration)
-2. Install **Modbus Manager** from HACS
-3. Restart Home Assistant
-4. Add integration via **Settings → Devices & Services → Add Integration → Modbus Manager**
-
-### CLI monitor
-
-```bash
-pipx install git+https://github.com/arturmietek/ha-modbus-manager.git
-```
-
-Or from a local clone:
-
-```bash
-git clone https://github.com/arturmietek/ha-modbus-manager.git
-cd ha-modbus-manager
-pipx install .
-```
-
-Run:
-
-```bash
-modbus-monitor custom_components/modbus_manager/device_definitions/modbus_gate_controller.yaml
-modbus-monitor --port /dev/ttyUSB0 --slave 1 custom_components/modbus_manager/device_definitions/modbus_gate_controller.yaml
-```
-
-## CLI monitor usage
-
-```bash
-modbus-monitor device.yaml                                       # transport picker → slave config
-modbus-monitor --port /dev/ttyUSB0 --slave 1 device.yaml        # RTU, no prompts
-modbus-monitor --host 192.168.1.100 --slave 1 device.yaml       # TCP, no prompts
-modbus-monitor --host 192.168.1.100 --tcp-port 502 --slave 1 device.yaml
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `PRESET` | *(required)* | Device definition YAML file (positional or `--preset`) |
-| `--port` | *(picker)* | RTU serial port, e.g. `/dev/ttyUSB0` or `COM3` |
-| `--baud` | `9600` | RTU baud rate |
-| `--host` | *(picker)* | TCP host / IP address, e.g. `192.168.1.100` |
-| `--tcp-port` | `502` | TCP port |
-| `--slave` | *(config screen)* | Slave / unit ID 1–247; skips the interactive config screen |
-| `--interval` | `0.5` | Refresh interval in seconds |
-
-When neither `--port` nor `--host` is given, an interactive picker lets you choose the transport (RTU or TCP) and then the serial port or IP address. When `--slave` is omitted, a config screen lets you set it interactively.
-
-| Key | Action |
-|-----|--------|
-| `↑` / `↓` | Navigate between editable registers |
-| `Space` | Toggle coil / switch |
-| `Enter` | Edit holding register value |
-| `q` / `Ctrl+C` | Exit |
-
-## Device definitions
-
-YAML files in `custom_components/modbus_manager/device_definitions/` describe register maps for supported devices. The format is shared between the HA component and the CLI monitor.
-
-### Supported devices
-
-| File | Device |
-|------|--------|
-| `shenzen_lc_relay_input_board.yaml` | Shenzen LC 8-channel Relay + Input Board |
-| `eastron_sdm120m.yaml` | Eastron SDM120M Single-phase Energy Meter |
-| `eastron_sdm630_modbus.yaml` | Eastron SDM630 Three-phase Energy Meter |
-| `sofarsolar_ktl_x.yaml` | SofarSolar KTL-X Three-phase Inverter |
-| `sofarsolar_tl_g3.yaml` | SofarSolar TL-G3 Single-phase Inverter |
-| `eletechsup_r4cva02.yaml` | Eletechsup R4CVA02 Voltage Module |
-| `eletechsup_r4ivb02.yaml` | Eletechsup R4IVB02 Current Loop Module |
-| `eletechsup_n4aia04.yaml` | Eletechsup N4AIA04 4-channel Analog Input |
-
-## Requirements
-
-- Python 3.10+
-- `pymodbus >= 3.0`
-- `pyserial >= 3.0`
-- `pyyaml >= 6.0`
+See [custom_components/modbus_manager/README.md](custom_components/modbus_manager/README.md) for architecture, coordinator internals, and known limitations.

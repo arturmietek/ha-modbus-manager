@@ -1,6 +1,7 @@
 """Config flow and Options flow for Modbus Manager."""
 from __future__ import annotations
 
+import re
 import uuid
 import logging
 from pathlib import Path
@@ -35,9 +36,12 @@ from .const import (
     CONF_DEFINITION_SOURCE,
     CONF_DEFINITION_BUILTIN,
     CONF_DEFINITION_CUSTOM,
+    CONF_DEFINITION_USER,
     CONF_DEFINITION_FILE,
+    CONF_DEFINITION_USER_FILE,
     CONF_DEFINITION_YAML,
     CONF_DEVICE_PARAMS,
+    CONF_DEVICE_ENABLED,
     DEFAULT_BAUDRATE,
     DEFAULT_PARITY,
     DEFAULT_STOPBITS,
@@ -50,6 +54,54 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 DEFINITIONS_DIR = Path(__file__).parent / "device_definitions"
+USER_DEFINITIONS_SUBDIR = "modbus_manager"
+
+
+def _user_definitions_dir(config_dir: str) -> Path:
+    return Path(config_dir) / USER_DEFINITIONS_SUBDIR
+
+
+def _slugify(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "custom_device"
+
+
+def _unique_stem(config_dir: str, base: str) -> str:
+    d = _user_definitions_dir(config_dir)
+    stem = base
+    counter = 1
+    while (d / f"{stem}.yaml").exists():
+        stem = f"{base}_{counter}"
+        counter += 1
+    return stem
+
+
+def _load_user_definitions(config_dir: str) -> dict[str, str]:
+    """Return {stem: display_name} for user YAML files in config dir."""
+    result = {}
+    d = _user_definitions_dir(config_dir)
+    if d.is_dir():
+        for path in sorted(d.glob("*.yaml")):
+            try:
+                with path.open(encoding="utf-8") as f:
+                    data = yaml.safe_load(f)
+                result[path.stem] = data.get("name", path.stem)
+            except Exception:  # noqa: BLE001
+                result[path.stem] = path.stem
+    return result
+
+
+def _load_user_definition(config_dir: str, stem: str) -> dict | None:
+    path = _user_definitions_dir(config_dir) / f"{stem}.yaml"
+    if not path.is_file():
+        return None
+    with path.open(encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def _save_user_definition(config_dir: str, stem: str, content: str) -> None:
+    d = _user_definitions_dir(config_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{stem}.yaml").write_text(content, encoding="utf-8")
 
 
 def _load_builtin_definitions() -> dict[str, str]:
@@ -235,23 +287,29 @@ class ModbusManagerOptionsFlow(config_entries.OptionsFlow):
         )
 
     async def async_step_choose_definition(self, user_input: dict | None = None) -> FlowResult:
-        """Step: choose built-in definition or upload custom YAML."""
+        """Step: choose built-in definition, user library, or paste custom YAML."""
         if user_input is not None:
             self._new_device[CONF_DEFINITION_SOURCE] = user_input[CONF_DEFINITION_SOURCE]
-            if user_input[CONF_DEFINITION_SOURCE] == CONF_DEFINITION_BUILTIN:
+            source = user_input[CONF_DEFINITION_SOURCE]
+            if source == CONF_DEFINITION_BUILTIN:
                 return await self.async_step_select_builtin()
+            if source == CONF_DEFINITION_USER:
+                return await self.async_step_select_user()
             return await self.async_step_upload_custom()
+
+        user_defs = await self.hass.async_add_executor_job(
+            _load_user_definitions, self.hass.config.config_dir
+        )
+        options: dict[str, str] = {CONF_DEFINITION_BUILTIN: "Built-in device library"}
+        if user_defs:
+            options[CONF_DEFINITION_USER] = f"User library ({len(user_defs)} definitions in /config/modbus_manager/)"
+        options[CONF_DEFINITION_CUSTOM] = "Paste YAML definition"
 
         return self.async_show_form(
             step_id="choose_definition",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_DEFINITION_SOURCE, default=CONF_DEFINITION_BUILTIN): vol.In(
-                        {
-                            CONF_DEFINITION_BUILTIN: "Built-in device library",
-                            CONF_DEFINITION_CUSTOM: "Upload custom YAML definition",
-                        }
-                    )
+                    vol.Required(CONF_DEFINITION_SOURCE, default=CONF_DEFINITION_BUILTIN): vol.In(options)
                 }
             ),
         )
@@ -279,6 +337,33 @@ class ModbusManagerOptionsFlow(config_entries.OptionsFlow):
             step_id="select_builtin",
             data_schema=vol.Schema(
                 {vol.Required(CONF_DEFINITION_FILE): vol.In(builtin)}
+            ),
+        )
+
+    async def async_step_select_user(self, user_input: dict | None = None) -> FlowResult:
+        """Step: pick from user YAML definitions in config dir."""
+        config_dir = self.hass.config.config_dir
+        user_defs = await self.hass.async_add_executor_job(_load_user_definitions, config_dir)
+
+        if not user_defs:
+            return self.async_abort(reason="no_user_definitions")
+
+        if user_input is not None:
+            stem = user_input[CONF_DEFINITION_USER_FILE]
+            definition = await self.hass.async_add_executor_job(_load_user_definition, config_dir, stem)
+            if definition is None:
+                return self.async_abort(reason="definition_not_found")
+            self._new_device[CONF_DEFINITION] = definition
+            self._new_device[CONF_DEFINITION_USER_FILE] = stem
+            if definition.get("parameters"):
+                return await self.async_step_device_params()
+            self._devices.append(self._new_device)
+            return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="select_user",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_DEFINITION_USER_FILE): vol.In(user_defs)}
             ),
         )
 
@@ -349,7 +434,7 @@ class ModbusManagerOptionsFlow(config_entries.OptionsFlow):
         )
 
     async def async_step_edit_device_form(self, user_input: dict | None = None) -> FlowResult:
-        """Step: edit name, slave ID and poll interval for the chosen device."""
+        """Step: edit slave ID for the chosen device."""
         device = next(
             (d for d in self._devices if d[CONF_DEVICE_ID] == self._editing_device_id), None
         )
@@ -357,7 +442,6 @@ class ModbusManagerOptionsFlow(config_entries.OptionsFlow):
             return await self.async_step_init()
 
         errors: dict[str, str] = {}
-        bus_default = float(self._config_entry.data.get("scan_interval", DEFAULT_SCAN_INTERVAL))
 
         if user_input is not None:
             slave_id = user_input[CONF_SLAVE_ID]
@@ -368,30 +452,21 @@ class ModbusManagerOptionsFlow(config_entries.OptionsFlow):
                 errors[CONF_SLAVE_ID] = "duplicate_slave_id"
             else:
                 self._devices = [
-                    {
-                        **d,
-                        CONF_DEVICE_NAME: user_input[CONF_DEVICE_NAME],
-                        CONF_SLAVE_ID: slave_id,
-                        CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
-                    }
+                    {**d, CONF_SLAVE_ID: slave_id, CONF_DEVICE_ENABLED: user_input[CONF_DEVICE_ENABLED]}
                     if d[CONF_DEVICE_ID] == self._editing_device_id
                     else d
                     for d in self._devices
                 ]
                 return await self.async_step_init()
 
-        current_interval = float(device.get(CONF_SCAN_INTERVAL, bus_default))
         return self.async_show_form(
             step_id="edit_device_form",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_DEVICE_NAME, default=device[CONF_DEVICE_NAME]): str,
                     vol.Required(CONF_SLAVE_ID, default=device[CONF_SLAVE_ID]): vol.All(
                         vol.Coerce(int), vol.Range(min=1, max=247)
                     ),
-                    vol.Required(CONF_SCAN_INTERVAL, default=current_interval): vol.All(
-                        vol.Coerce(float), vol.Range(min=0.5, max=3600)
-                    ),
+                    vol.Required(CONF_DEVICE_ENABLED, default=device.get(CONF_DEVICE_ENABLED, True)): bool,
                 }
             ),
             description_placeholders={"device_name": device[CONF_DEVICE_NAME]},
@@ -399,16 +474,23 @@ class ModbusManagerOptionsFlow(config_entries.OptionsFlow):
         )
 
     async def async_step_upload_custom(self, user_input: dict | None = None) -> FlowResult:
-        """Step: paste custom YAML definition."""
+        """Step: paste custom YAML definition and save it to config dir."""
         errors: dict[str, str] = {}
+        config_dir = self.hass.config.config_dir
 
         if user_input is not None:
+            yaml_text = user_input[CONF_DEFINITION_YAML]
             try:
-                definition = yaml.safe_load(user_input[CONF_DEFINITION_YAML])
+                definition = yaml.safe_load(yaml_text)
                 if not isinstance(definition, dict) or "entities" not in definition:
                     errors[CONF_DEFINITION_YAML] = "invalid_definition"
                 else:
+                    device_name = self._new_device.get(CONF_DEVICE_NAME, "custom_device")
+                    base_stem = _slugify(definition.get("name", device_name))
+                    stem = await self.hass.async_add_executor_job(_unique_stem, config_dir, base_stem)
+                    await self.hass.async_add_executor_job(_save_user_definition, config_dir, stem, yaml_text)
                     self._new_device[CONF_DEFINITION] = definition
+                    self._new_device[CONF_DEFINITION_USER_FILE] = stem
                     if definition.get("parameters"):
                         return await self.async_step_device_params()
                     self._devices.append(self._new_device)

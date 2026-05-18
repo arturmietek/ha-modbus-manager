@@ -9,6 +9,9 @@ description: >
   Default slave ID: 1. Default baud rate: 9600 bps.
   Tested register layout from modbus2mqtt v0.3.
 
+polling:
+  inter_read_delay_ms: 200
+
 parameters:
   rated_power_kw:
     name: "Rated Power"
@@ -34,6 +37,87 @@ entities:
       2: "Normal"
       3: "Fault"
       4: "Permanent Fault"
+
+  # ── Fault registers ────────────────────────────────────────────────────────
+  # Bit definitions from SofarSolar ModBus-RTU Communication Protocol.
+  # Value is "OK" when all bits are clear; otherwise a comma-separated list of active faults.
+  - id: fault_word_1
+    name: "Fault Word 1 (Grid)"
+    register_type: holding
+    address: 1
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    entity_category: diagnostic
+    bitmask:
+      0: "Grid Overvoltage"
+      1: "Grid Undervoltage"
+      2: "Grid Overfrequency"
+      3: "Grid Underfrequency"
+      4: "Utility Loss"
+      5: "Ground Fault"
+      6: "DC Component High"
+      7: "Residual Current High"
+      8: "GFCI Tripped"
+      9: "Grid Impedance High"
+
+  - id: fault_word_2
+    name: "Fault Word 2 (Temperature)"
+    register_type: holding
+    address: 2
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    entity_category: diagnostic
+    bitmask:
+      0: "Internal Temperature High"
+      1: "Radiator Temperature High"
+      2: "Module Temperature High"
+      3: "Fan Fault"
+      4: "Ambient Temperature High"
+
+  - id: fault_word_3
+    name: "Fault Word 3 (PV Input)"
+    register_type: holding
+    address: 3
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    entity_category: diagnostic
+    bitmask:
+      0: "PV1 Overvoltage"
+      1: "PV1 Undervoltage"
+      2: "PV1 Overcurrent"
+      3: "PV2 Overvoltage"
+      4: "PV2 Undervoltage"
+      5: "PV2 Overcurrent"
+
+  - id: fault_word_4
+    name: "Fault Word 4 (Hardware)"
+    register_type: holding
+    address: 4
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    entity_category: diagnostic
+    bitmask:
+      0: "EEPROM Error"
+      1: "Communication Error"
+      2: "DSP Fault"
+      3: "IGBT Fault"
+      4: "Arc Fault"
+
+  - id: fault_word_5
+    name: "Fault Word 5 (Other)"
+    register_type: holding
+    address: 5
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    entity_category: diagnostic
+    bitmask:
+      0: "Auto Test Failed"
+      1: "Hardware Version Mismatch"
 
   # ── AC output — primary measurements ──────────────────────────────────────
   - id: ac_power
@@ -365,4 +449,19 @@ entities:
     scale: 1
     unit: "s"
     device_class: duration
+    entity_category: diagnostic
+
+  # ── Product information (FC04 input registers) ─────────────────────────────
+  # serial_number (0x2001, 7 regs, 21-byte response) omitted for KTL-X:
+  # the device sends FC04 responses with inter-byte gaps > RTU silence threshold
+  # (3.5 char times at 9600 baud), causing pymodbus to fragment the frame.
+  # product_code alone is a 7-byte response and does not trigger this issue.
+  - id: product_code
+    name: "Product Code"
+    register_type: input
+    address: 8192              # 0x2000
+    entity_type: sensor
+    data_type: UINT16
+    byte_order: BIG
+    precision: 0
     entity_category: diagnostic

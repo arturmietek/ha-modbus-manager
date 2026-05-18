@@ -62,6 +62,7 @@ class _Row:
 
 _COLORS_INITIALIZED = False
 _LABEL_W = 36
+_RAW_W   = 20
 _VAL_W   = 12
 
 
@@ -348,8 +349,18 @@ def _yaml_consecutive_groups(entities: list) -> list[list]:
     return groups
 
 
+_ERR = ([], "ERR")
+
+
+def _fmt_raw(raw: list) -> str:
+    """Format raw register list as hex string, e.g. '0x449A 0x0000'."""
+    if not raw:
+        return ""
+    return " ".join(f"0x{r:04X}" for r in raw)
+
+
 def read_from_definition(client, slave_id: int, definition) -> dict:
-    """YAML mode: read all entities in definition, return {entity_id: decoded_value}."""
+    """YAML mode: read all entities, return {entity_id: (raw_regs, decoded_value)}."""
     results = {}
 
     fn_map = {
@@ -378,20 +389,20 @@ def read_from_definition(client, slave_id: int, definition) -> dict:
 
             for entity in entities:
                 if pool is None:
-                    results[entity.id] = "ERR"
+                    results[entity.id] = _ERR
                     continue
                 idx = entity.address - hint.start_address
                 n   = REGISTER_COUNT.get(entity.data_type, 1)
                 raw = pool[idx:idx + n]
                 if len(raw) < n:
-                    results[entity.id] = "ERR"
+                    results[entity.id] = _ERR
                     continue
                 try:
                     val = decode_value(raw, entity.data_type, entity.byte_order,
                                        entity.scale, entity.offset)
-                    results[entity.id] = apply_value_map(val, entity.value_map)
+                    results[entity.id] = (raw, apply_value_map(val, entity.value_map))
                 except Exception:
-                    results[entity.id] = "ERR"
+                    results[entity.id] = _ERR
         else:
             single = sorted([e for e in entities if REGISTER_COUNT.get(e.data_type, 1) == 1],
                             key=lambda e: e.address)
@@ -406,14 +417,15 @@ def read_from_definition(client, slave_id: int, definition) -> dict:
                     pool = None
                 for i, entity in enumerate(group):
                     if pool is None:
-                        results[entity.id] = "ERR"
+                        results[entity.id] = _ERR
                         continue
                     try:
-                        val = decode_value([pool[i]], entity.data_type, entity.byte_order,
+                        raw_reg = [pool[i]]
+                        val = decode_value(raw_reg, entity.data_type, entity.byte_order,
                                            entity.scale, entity.offset)
-                        results[entity.id] = apply_value_map(val, entity.value_map)
+                        results[entity.id] = (raw_reg, apply_value_map(val, entity.value_map))
                     except Exception:
-                        results[entity.id] = "ERR"
+                        results[entity.id] = _ERR
 
             for entity in multi:
                 n = entity.register_count
@@ -423,14 +435,15 @@ def read_from_definition(client, slave_id: int, definition) -> dict:
                 except ModbusException:
                     raw = None
                 if raw is None:
-                    results[entity.id] = "ERR"
+                    results[entity.id] = _ERR
                     continue
                 try:
-                    val = decode_value(raw[:n], entity.data_type, entity.byte_order,
+                    raw_regs = raw[:n]
+                    val = decode_value(raw_regs, entity.data_type, entity.byte_order,
                                        entity.scale, entity.offset)
-                    results[entity.id] = apply_value_map(val, entity.value_map)
+                    results[entity.id] = (raw_regs, apply_value_map(val, entity.value_map))
                 except Exception:
-                    results[entity.id] = "ERR"
+                    results[entity.id] = _ERR
 
     return results
 
@@ -619,7 +632,10 @@ def _render(stdscr, title: str, all_data: dict, rows: list[_Row],
                 pass
             scr_row += 1
 
-        value = all_data.get(row.slave_id, ({}, 0))[0].get(row.key, "?")
+        entry = all_data.get(row.slave_id, ({}, 0))[0].get(row.key, ([], "?"))
+        raw_regs, value = entry if isinstance(entry, tuple) else ([], entry)
+
+        raw_display = _fmt_raw(raw_regs) if raw_regs else ""
 
         if _YAML_SUPPORT and row.unit:
             val_display = format_value(value, row.precision, row.unit)
@@ -632,11 +648,16 @@ def _render(stdscr, title: str, all_data: dict, rows: list[_Row],
         try:
             if is_sel:
                 hint = "Enter edit" if row.nav == "edit" else "Space toggle"
-                line = f"{col_label}{val_display:<{_VAL_W}}  ← {hint}"
+                line = f"{col_label}{raw_display:<{_RAW_W}}{val_display:<{_VAL_W}}  ← {hint}"
                 stdscr.addstr(scr_row, 0, line[:w - 1], curses.color_pair(4) | curses.A_BOLD)
             else:
                 stdscr.addstr(scr_row, 0, col_label[:w - 1])
-                vc = len(col_label)
+                rc = len(col_label)
+                if rc < w - 1:
+                    stdscr.addstr(scr_row, rc,
+                                  raw_display[:_RAW_W].ljust(_RAW_W)[:w - rc - 1],
+                                  curses.color_pair(5) | curses.A_DIM)
+                vc = rc + _RAW_W
                 if vc < w - 1:
                     attr = (curses.color_pair(1) | curses.A_BOLD
                             if value == "ERR" else curses.color_pair(3))
@@ -743,7 +764,8 @@ def _run_monitor(stdscr, interval: float, conn_info: dict,
                 if nav_items:
                     row      = nav_items[cursor]
                     snapshot = poller.get_data()
-                    value    = snapshot.get(row.slave_id, ({}, 0))[0].get(row.key)
+                    entry    = snapshot.get(row.slave_id, ({}, 0))[0].get(row.key)
+                    value    = entry[1] if isinstance(entry, tuple) else entry
 
                     if row.nav == "toggle" and key == ord(' ') and value is not None and value != "ERR":
                         try:

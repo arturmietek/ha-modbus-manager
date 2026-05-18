@@ -63,6 +63,20 @@ def _swap(v: int) -> int:
     return ((v & 0xFF) << 8) | ((v >> 8) & 0xFF)
 
 
+def apply_bitmask(raw: int, bitmask: dict) -> str:
+    """Decode active bit flags from a raw integer using a bit-index → label mapping.
+
+    Returns a comma-separated string of active flag labels, or "OK" when all bits are clear.
+    Keys may be ints or strings; values are the human-readable label for that bit.
+    """
+    active = [
+        str(label)
+        for bit, label in sorted(bitmask.items(), key=lambda x: int(x[0]))
+        if int(raw) & (1 << int(bit))
+    ]
+    return ", ".join(active) if active else "OK"
+
+
 def apply_value_map(value, value_map: dict):
     """Apply a value_map dict to a decoded value. Returns mapped result or original.
 

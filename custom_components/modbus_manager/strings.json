@@ -60,11 +60,9 @@
       },
       "edit_device_form": {
         "title": "Edit Device — {device_name}",
-        "description": "Poll interval: how often this device is read. Range 0.5–3600 s.",
         "data": {
-          "device_name": "Device name",
           "slave_id": "Modbus slave ID (1–247)",
-          "scan_interval": "Poll interval (seconds)"
+          "enabled": "Enable polling (uncheck to pause without removing)"
         }
       },
       "choose_definition": {
@@ -77,6 +75,12 @@
         "title": "Select Built-in Device",
         "data": {
           "definition_file": "Device type"
+        }
+      },
+      "select_user": {
+        "title": "Select User Device",
+        "data": {
+          "definition_user_file": "Device type"
         }
       },
       "device_params": {
@@ -99,6 +103,7 @@
     },
     "abort": {
       "no_builtin_definitions": "No built-in device definitions found.",
+      "no_user_definitions": "No user device definitions found in /config/modbus_manager/.",
       "definition_not_found": "Selected definition file not found.",
       "no_devices": "No devices configured on this bus."
     },

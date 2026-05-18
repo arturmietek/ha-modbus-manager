@@ -5,5 +5,7 @@
   "requirements": ["pymodbus>=3.6.0"],
   "config_flow": true,
   "iot_class": "local_polling",
-  "codeowners": []
+  "documentation": "https://github.com/arturmietek/ha-modbus-manager",
+  "issue_tracker": "https://github.com/arturmietek/ha-modbus-manager/issues",
+  "codeowners": ["@arturmietek"]
 }

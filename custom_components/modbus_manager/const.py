@@ -25,10 +25,13 @@ CONF_SCAN_INTERVAL = "scan_interval"
 CONF_DEFINITION = "definition"
 CONF_DEFINITION_BUILTIN = "builtin"
 CONF_DEFINITION_CUSTOM = "custom"
+CONF_DEFINITION_USER = "user"
 CONF_DEFINITION_SOURCE = "definition_source"
 CONF_DEFINITION_FILE = "definition_file"
+CONF_DEFINITION_USER_FILE = "definition_user_file"
 CONF_DEFINITION_YAML = "definition_yaml"
 CONF_DEVICE_PARAMS = "device_params"
+CONF_DEVICE_ENABLED = "enabled"
 
 # Modbus register types
 REGISTER_COIL = "coil"

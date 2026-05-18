@@ -6,6 +6,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorStateClass,
 )
+from homeassistant.helpers.entity import EntityCategory, DeviceInfo
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -22,7 +23,7 @@ from homeassistant.const import (
     PERCENTAGE,
 )
 
-from .const import DOMAIN, CONF_DEFINITION, ENTITY_TYPE_SENSOR, ENTITY_TYPE_TEXT
+from .const import DOMAIN, CONF_DEFINITION, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_SLAVE_ID, ENTITY_TYPE_SENSOR, ENTITY_TYPE_TEXT
 from .coordinator import ModbusManagerCoordinator
 from .entity_base import ModbusManagerEntity
 
@@ -65,8 +66,38 @@ async def async_setup_entry(
         for entity_def in definition.get("entities", []):
             if entity_def.get("entity_type") in (ENTITY_TYPE_SENSOR, ENTITY_TYPE_TEXT):
                 entities.append(ModbusManagerSensor(coordinator, device, entity_def))
+        entities.extend(_poll_stat_entities(coordinator, device))
 
     async_add_entities(entities)
+
+
+def _poll_stat_entities(coordinator, device: dict) -> list:
+    return [
+        ModbusManagerPollStatSensor(coordinator, device, stat)
+        for stat in (
+            {
+                "key": "_poll_last_success",
+                "name": "Last Successful Poll",
+                "device_class": SensorDeviceClass.TIMESTAMP,
+                "state_class": None,
+                "unit": None,
+            },
+            {
+                "key": "_poll_error_count",
+                "name": "Consecutive Poll Errors",
+                "device_class": None,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "unit": None,
+            },
+            {
+                "key": "_poll_duration_ms",
+                "name": "Last Poll Duration",
+                "device_class": SensorDeviceClass.DURATION,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "unit": "ms",
+            },
+        )
+    ]
 
 
 class ModbusManagerSensor(ModbusManagerEntity, SensorEntity):
@@ -84,7 +115,10 @@ class ModbusManagerSensor(ModbusManagerEntity, SensorEntity):
                 self._attr_device_class = None
 
         # State class
-        is_text = entity_def.get("entity_type") == ENTITY_TYPE_TEXT
+        is_text = (
+            entity_def.get("entity_type") == ENTITY_TYPE_TEXT
+            or entity_def.get("data_type") == "STRING"
+        )
         state_class_str = entity_def.get("state_class")
 
         if is_text:
@@ -97,10 +131,11 @@ class ModbusManagerSensor(ModbusManagerEntity, SensorEntity):
         else:
             self._attr_state_class = SensorStateClass.MEASUREMENT
 
-        # value_map produces strings — HA forbids numeric state_class for non-numeric values.
+        # value_map and bitmask produce strings — HA forbids numeric state_class for non-numeric values.
         # Override unconditionally: this must come after the block above.
-        if entity_def.get("value_map"):
+        if entity_def.get("value_map") or entity_def.get("bitmask"):
             self._attr_state_class = None
+            self._attr_native_unit_of_measurement = None
 
         # Unit of measurement
         unit_raw = entity_def.get("unit")
@@ -120,3 +155,33 @@ class ModbusManagerSensor(ModbusManagerEntity, SensorEntity):
     @property
     def native_value(self):
         return self._entity_value
+
+
+class ModbusManagerPollStatSensor(ModbusManagerEntity, SensorEntity):
+    """Diagnostic sensor reporting coordinator polling statistics."""
+
+    def __init__(self, coordinator, device_config: dict, stat: dict) -> None:
+        super().__init__(coordinator, device_config, {
+            "id": stat["key"],
+            "name": stat["name"],
+            "entity_category": "diagnostic",
+        })
+        self._stat_key = stat["key"]
+        self._attr_device_class = stat["device_class"]
+        self._attr_state_class = stat["state_class"]
+        if stat["unit"]:
+            self._attr_native_unit_of_measurement = UNIT_MAP.get(stat["unit"], stat["unit"])
+        self._attr_entity_registry_enabled_default = False
+
+    @property
+    def native_value(self):
+        device_id = self._device_config[CONF_DEVICE_ID]
+        device_data = self.coordinator.data or {}
+        return device_data.get(device_id, {}).get(self._stat_key)
+
+    @property
+    def available(self) -> bool:
+        if not self.coordinator.last_update_success:
+            return False
+        device_id = self._device_config[CONF_DEVICE_ID]
+        return device_id in (self.coordinator.data or {})

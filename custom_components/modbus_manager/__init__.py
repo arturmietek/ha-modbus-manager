@@ -8,19 +8,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .const import DOMAIN, PLATFORMS, CONF_DEVICES, CONF_DEVICE_ID, CONF_DEFINITION, CONF_DEFINITION_FILE
+from .const import DOMAIN, PLATFORMS, CONF_DEVICES, CONF_DEVICE_ID, CONF_DEFINITION, CONF_DEFINITION_FILE, CONF_DEFINITION_USER_FILE
 from .coordinator import ModbusManagerCoordinator
-from .config_flow import _load_definition
+from .config_flow import _load_definition, _load_user_definition
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _refresh_device_definitions(devices: list[dict]) -> list[dict]:
-    """Reload built-in YAML definitions from disk so YAML edits take effect on restart.
-
-    Devices added from a built-in file have CONF_DEFINITION_FILE set.
-    Custom-YAML devices have no file reference and keep their stored definition.
-    """
+def _refresh_device_definitions(config_dir: str, devices: list[dict]) -> list[dict]:
+    """Reload YAML definitions from disk so edits take effect on restart."""
     refreshed = []
     for device in devices:
         stem = device.get(CONF_DEFINITION_FILE)
@@ -29,8 +25,24 @@ def _refresh_device_definitions(devices: list[dict]) -> list[dict]:
             if fresh is not None:
                 device = {**device, CONF_DEFINITION: fresh}
             else:
+                fresh = _load_user_definition(config_dir, stem)
+                if fresh is not None:
+                    _LOGGER.info(
+                        "Built-in definition '%s.yaml' not found — loaded from config dir", stem
+                    )
+                    device = {**device, CONF_DEFINITION: fresh, CONF_DEFINITION_USER_FILE: stem}
+                else:
+                    _LOGGER.warning(
+                        "Definition '%s.yaml' not found in built-in library or config dir — using stored copy", stem
+                    )
+        user_stem = device.get(CONF_DEFINITION_USER_FILE)
+        if user_stem:
+            fresh = _load_user_definition(config_dir, user_stem)
+            if fresh is not None:
+                device = {**device, CONF_DEFINITION: fresh}
+            else:
                 _LOGGER.warning(
-                    "Built-in definition file '%s.yaml' not found — using stored copy", stem
+                    "User definition '%s.yaml' not found in config dir — using stored copy", user_stem
                 )
         refreshed.append(device)
     return refreshed
@@ -41,7 +53,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     raw_devices: list[dict] = entry.options.get(CONF_DEVICES, [])
-    devices = await hass.async_add_executor_job(_refresh_device_definitions, raw_devices)
+    devices = await hass.async_add_executor_job(_refresh_device_definitions, hass.config.config_dir, raw_devices)
 
     coordinator = ModbusManagerCoordinator(
         hass=hass,

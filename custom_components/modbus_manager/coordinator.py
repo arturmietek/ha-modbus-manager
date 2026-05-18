@@ -1,9 +1,10 @@
 """DataUpdateCoordinator for Modbus Manager."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 from typing import Any
 
 from pymodbus.client import AsyncModbusSerialClient, AsyncModbusTcpClient
@@ -28,6 +29,7 @@ from .const import (
     CONF_SCAN_INTERVAL,
     CONF_DEFINITION,
     CONF_DEVICE_PARAMS,
+    CONF_DEVICE_ENABLED,
     DEFAULT_SCAN_INTERVAL,
     REGISTER_COIL,
     REGISTER_DISCRETE_INPUT,
@@ -38,7 +40,7 @@ from .const import (
     BYTE_ORDER_BIG,
     DOMAIN,
 )
-from .modbus_device import decode_value, apply_value_map, REGISTER_COUNT
+from .modbus_device import decode_value, apply_value_map, apply_bitmask, REGISTER_COUNT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -174,6 +176,10 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
             slave_id: int = device[CONF_SLAVE_ID]
             definition: dict = device[CONF_DEFINITION]
 
+            if not device.get(CONF_DEVICE_ENABLED, True):
+                result[device_id] = self.data.get(device_id, {}) if self.data else {}
+                continue
+
             # Skip devices whose poll interval has not elapsed yet
             device_interval = self._device_intervals.get(device_id, self._bus_scan_interval)
             last = self._last_polled.get(device_id, 0.0)
@@ -183,10 +189,15 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
             self._last_polled[device_id] = now
 
             try:
+                t0 = time.monotonic()
                 device_data = await self._poll_device(slave_id, definition, device_id=device_id)
+                poll_ms = int((time.monotonic() - t0) * 1000)
                 if device_id in self._failure_counts:
                     _LOGGER.info("Device %s (slave %d) back online", device_id, slave_id)
                     del self._failure_counts[device_id]
+                device_data["_poll_last_success"] = datetime.now(timezone.utc)
+                device_data["_poll_error_count"] = 0
+                device_data["_poll_duration_ms"] = poll_ms
                 result[device_id] = device_data
             except ModbusException as err:
                 fail_count = self._failure_counts.get(device_id, 0) + 1
@@ -200,7 +211,12 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug("Device %s (slave %d) still offline (attempt %d)", device_id, slave_id, fail_count)
                 else:
                     _LOGGER.debug("Device %s (slave %d) missed poll %d/%d: %s", device_id, slave_id, fail_count, self._offline_warn_threshold, err)
-                result[device_id] = {}
+                prev = self.data.get(device_id, {}) if self.data else {}
+                result[device_id] = {
+                    "_poll_last_success": prev.get("_poll_last_success"),
+                    "_poll_error_count": fail_count,
+                    "_poll_duration_ms": prev.get("_poll_duration_ms"),
+                }
             except Exception as err:  # noqa: BLE001
                 _LOGGER.error("Unexpected error for device %s: %s", device_id, err)
                 result[device_id] = {}
@@ -212,10 +228,20 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
         data: dict[str, Any] = {}
         entities: list[dict] = definition.get("entities", [])
         polling_hints: dict = definition.get("polling", {})
+        inter_delay: float = polling_hints.get("inter_read_delay_ms", 0) / 1000
+
+        read_types_done = 0  # counts FC types already sent, to insert delay before each subsequent one
+
+        async def _maybe_delay() -> None:
+            nonlocal read_types_done
+            if read_types_done > 0 and inter_delay > 0:
+                await asyncio.sleep(inter_delay)
+            read_types_done += 1
 
         # ── Coils ─────────────────────────────────────────────────────────────
         coil_entities = [e for e in entities if e.get("register_type") == REGISTER_COIL]
         if coil_entities:
+            await _maybe_delay()
             hint = polling_hints.get("coils", {})
             start = hint.get("start_address", 0)
             count = hint.get("count") or (max(e["address"] for e in coil_entities) - start + 1)
@@ -229,6 +255,7 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
         # ── Discrete inputs ───────────────────────────────────────────────────
         di_entities = [e for e in entities if e.get("register_type") == REGISTER_DISCRETE_INPUT]
         if di_entities:
+            await _maybe_delay()
             hint = polling_hints.get("discrete_inputs", {})
             start = hint.get("start_address", 0)
             count = hint.get("count") or (max(e["address"] for e in di_entities) - start + 1)
@@ -242,17 +269,19 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
         # ── Holding registers ─────────────────────────────────────────────────
         holding_entities = [e for e in entities if e.get("register_type") == REGISTER_HOLDING]
         if holding_entities:
-            data.update(await self._read_register_entities(holding_entities, slave_id, is_holding=True, device_id=device_id))
+            await _maybe_delay()
+            data.update(await self._read_register_entities(holding_entities, slave_id, is_holding=True, device_id=device_id, inter_delay=inter_delay))
 
         # ── Input registers ───────────────────────────────────────────────────
         input_entities = [e for e in entities if e.get("register_type") == REGISTER_INPUT]
         if input_entities:
-            data.update(await self._read_register_entities(input_entities, slave_id, is_holding=False, device_id=device_id))
+            await _maybe_delay()
+            data.update(await self._read_register_entities(input_entities, slave_id, is_holding=False, device_id=device_id, inter_delay=inter_delay))
 
         return data
 
     async def _read_register_entities(
-        self, entities: list[dict], slave_id: int, is_holding: bool, device_id: str = ""
+        self, entities: list[dict], slave_id: int, is_holding: bool, device_id: str = "", inter_delay: float = 0.0
     ) -> dict[str, Any]:
         """Batch-read a list of register entities, grouping contiguous blocks."""
         data: dict[str, Any] = {}
@@ -287,7 +316,10 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
         if current_start is not None:
             groups.append((current_start, current_end - current_start + 1, current_group))
 
-        for start, count, group_entities in groups:
+        for group_idx, (start, count, group_entities) in enumerate(groups):
+            if group_idx > 0 and inter_delay > 0:
+                await asyncio.sleep(inter_delay)
+
             if is_holding:
                 rr = await self._client.read_holding_registers(start, count=count, device_id=slave_id)
             else:
@@ -335,7 +367,10 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
 
                 try:
                     raw = decode_value(raw_regs, data_type, byte_order, scale, offset)
-                    value = apply_value_map(raw, entity.get("value_map") or {})
+                    if entity.get("bitmask"):
+                        value = apply_bitmask(int(raw), entity["bitmask"])
+                    else:
+                        value = apply_value_map(raw, entity.get("value_map") or {})
                     published = self._validate_and_track(value, entity, device_id)
                     if published is not _WITHHELD:
                         data[entity["id"]] = published
