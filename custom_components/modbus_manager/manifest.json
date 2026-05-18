@@ -1,11 +1,11 @@
 {
   "domain": "modbus_manager",
   "name": "Modbus Manager",
-  "version": "0.1.0",
-  "requirements": ["pymodbus>=3.6.0"],
+  "codeowners": ["@arturmietek"],
   "config_flow": true,
-  "iot_class": "local_polling",
   "documentation": "https://github.com/arturmietek/ha-modbus-manager",
+  "iot_class": "local_polling",
   "issue_tracker": "https://github.com/arturmietek/ha-modbus-manager/issues",
-  "codeowners": ["@arturmietek"]
+  "requirements": ["pymodbus>=3.6.0"],
+  "version": "0.1.0"
 }
