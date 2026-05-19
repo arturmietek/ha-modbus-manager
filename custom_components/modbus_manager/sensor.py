@@ -52,6 +52,32 @@ UNIT_MAP: dict[str, str] = {
 }
 
 
+def _resolve_state_class(entity_def: dict):
+    """Return SensorStateClass for an entity definition.
+
+    Priority:
+    1. Text / STRING entities → None (no numeric statistics)
+    2. Explicit state_class in YAML → use it (None on unknown value)
+    3. Default → MEASUREMENT
+    Note: value_map / bitmask override is applied by the caller after unit wiring.
+    """
+    is_text = (
+        entity_def.get("entity_type") == ENTITY_TYPE_TEXT
+        or entity_def.get("data_type") == "STRING"
+    )
+    if is_text:
+        return None
+
+    state_class_str = entity_def.get("state_class")
+    if state_class_str:
+        try:
+            return SensorStateClass(state_class_str)
+        except ValueError:
+            return None
+
+    return SensorStateClass.MEASUREMENT
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -115,21 +141,7 @@ class ModbusManagerSensor(ModbusManagerEntity, SensorEntity):
                 self._attr_device_class = None
 
         # State class
-        is_text = (
-            entity_def.get("entity_type") == ENTITY_TYPE_TEXT
-            or entity_def.get("data_type") == "STRING"
-        )
-        state_class_str = entity_def.get("state_class")
-
-        if is_text:
-            self._attr_state_class = None
-        elif state_class_str:
-            try:
-                self._attr_state_class = SensorStateClass(state_class_str)
-            except ValueError:
-                self._attr_state_class = None
-        else:
-            self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_state_class = _resolve_state_class(entity_def)
 
         # value_map and bitmask produce strings — HA forbids numeric state_class for non-numeric values.
         # Override unconditionally: this must come after the block above.

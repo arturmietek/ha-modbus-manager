@@ -29,12 +29,79 @@ def _stub(name: str) -> types.ModuleType:
 for _name in [
     "homeassistant",
     "homeassistant.core",
+    "homeassistant.exceptions",
     "homeassistant.helpers",
     "homeassistant.helpers.update_coordinator",
+    "homeassistant.helpers.entity",
+    "homeassistant.helpers.entity_platform",
+    "homeassistant.helpers.restore_state",
     "homeassistant.config_entries",
     "homeassistant.data_entry_flow",
+    "homeassistant.components",
+    "homeassistant.components.sensor",
+    "homeassistant.components.binary_sensor",
+    "homeassistant.components.switch",
+    "homeassistant.components.number",
+    "homeassistant.components.cover",
+    "homeassistant.const",
 ]:
     _stub(_name)
+
+
+import enum as _enum
+
+class _SensorStateClass(str, _enum.Enum):
+    MEASUREMENT = "measurement"
+    TOTAL = "total"
+    TOTAL_INCREASING = "total_increasing"
+
+class _SensorDeviceClass(str, _enum.Enum):
+    ENERGY = "energy"
+    POWER = "power"
+    VOLTAGE = "voltage"
+    CURRENT = "current"
+    TEMPERATURE = "temperature"
+    FREQUENCY = "frequency"
+    DURATION = "duration"
+    TIMESTAMP = "timestamp"
+
+_sensor_mod = sys.modules["homeassistant.components.sensor"]
+_sensor_mod.SensorStateClass = _SensorStateClass
+_sensor_mod.SensorDeviceClass = _SensorDeviceClass
+_sensor_mod.SensorEntity = object
+
+_bsensor_mod = sys.modules["homeassistant.components.binary_sensor"]
+_bsensor_mod.BinarySensorEntity = object
+_bsensor_mod.BinarySensorDeviceClass = MagicMock
+
+_switch_mod = sys.modules["homeassistant.components.switch"]
+_switch_mod.SwitchEntity = object
+_switch_mod.SwitchDeviceClass = MagicMock
+
+_number_mod = sys.modules["homeassistant.components.number"]
+_number_mod.NumberEntity = object
+_number_mod.NumberMode = MagicMock
+sys.modules["homeassistant.helpers.restore_state"].RestoreEntity = object
+
+_cover_mod = sys.modules["homeassistant.components.cover"]
+_cover_mod.CoverEntity = object
+_cover_mod.CoverDeviceClass = MagicMock
+_cover_mod.CoverEntityFeature = MagicMock
+
+_he = sys.modules["homeassistant.helpers.entity"]
+_he.DeviceInfo = dict
+_he.EntityCategory = MagicMock
+
+_hep = sys.modules["homeassistant.helpers.entity_platform"]
+_hep.AddEntitiesCallback = MagicMock
+
+_sys_const = sys.modules["homeassistant.const"]
+for _attr in [
+    "UnitOfElectricPotential", "UnitOfElectricCurrent", "UnitOfPower",
+    "UnitOfEnergy", "UnitOfApparentPower", "UnitOfReactivePower",
+    "UnitOfTemperature", "UnitOfFrequency", "UnitOfTime", "PERCENTAGE",
+]:
+    setattr(_sys_const, _attr, MagicMock())
 
 
 class _FakeDUC:
@@ -46,6 +113,11 @@ class _FakeDUC:
 _uc = sys.modules["homeassistant.helpers.update_coordinator"]
 _uc.DataUpdateCoordinator = _FakeDUC
 _uc.UpdateFailed = Exception
+class _FakeCoordinatorEntity:
+    def __init_subclass__(cls, **kwargs): super().__init_subclass__(**kwargs)
+    def __class_getitem__(cls, item): return cls
+
+_uc.CoordinatorEntity = _FakeCoordinatorEntity
 
 _core = sys.modules["homeassistant.core"]
 _core.HomeAssistant = MagicMock
@@ -85,3 +157,9 @@ _load_direct("custom_components.modbus_manager.coordinator",
 
 _load_direct("custom_components.modbus_manager.config_flow",
              COMPONENT / "config_flow.py")
+
+_load_direct("custom_components.modbus_manager.entity_base",
+             COMPONENT / "entity_base.py")
+
+_load_direct("custom_components.modbus_manager.sensor",
+             COMPONENT / "sensor.py")
