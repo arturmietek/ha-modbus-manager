@@ -1,0 +1,776 @@
+name: "Growatt MIN 6000TL-XH"
+manufacturer: "Growatt"
+model: "MIN 6000TL-XH"
+version: "1.0"
+description: >
+  Single-phase hybrid string inverter with battery support and dual MPPT.
+  All registers use FC03 (holding). Default slave ID: 1. Baud rate: 9600.
+  Source: modbus_local_gateway by timlaing.
+
+poll_priority: 10
+
+entities:
+
+  # ── Firmware / identification ─────────────────────────────────────────────
+  - id: hw_version
+    name: "Firmware Version"
+    register_type: holding
+    address: 9
+    entity_type: sensor
+    data_type: STRING
+    register_count: 3
+    entity_category: diagnostic
+
+  - id: sw_version
+    name: "Control Firmware Version"
+    register_type: holding
+    address: 12
+    entity_type: sensor
+    data_type: STRING
+    register_count: 3
+    entity_category: diagnostic
+
+  - id: serial_no
+    name: "Serial Number"
+    register_type: holding
+    address: 3001
+    entity_type: sensor
+    data_type: STRING
+    register_count: 14
+    entity_category: diagnostic
+
+  # ── Control (writable) ────────────────────────────────────────────────────
+  - id: on_off
+    name: "Remote On/Off"
+    register_type: holding
+    address: 0
+    entity_type: switch
+
+  - id: max_output_active
+    name: "Max Output Power"
+    register_type: holding
+    address: 3
+    entity_type: number
+    data_type: UINT16
+    unit: "%"
+    min: 0
+    max: 100
+    precision: 0
+
+  - id: language
+    name: "LCD Language"
+    register_type: holding
+    address: 15
+    entity_type: sensor
+    data_type: UINT16
+    entity_category: diagnostic
+    value_map:
+      0: "Italian"
+      1: "English"
+      2: "German"
+      3: "Spanish"
+      4: "French"
+      5: "Chinese"
+      6: "Polish"
+      7: "Portuguese"
+      8: "Hungarian"
+
+  - id: com_address
+    name: "Communicate Address"
+    register_type: holding
+    address: 3085
+    entity_type: number
+    data_type: UINT16
+    entity_category: diagnostic
+    min: 1
+    max: 254
+    precision: 0
+
+  # ── Battery management controls ───────────────────────────────────────────
+  - id: grid_first_discharge_rate
+    name: "Discharge Power Rate (Grid First)"
+    register_type: holding
+    address: 3036
+    entity_type: number
+    data_type: UINT16
+    min: 1
+    max: 255
+    precision: 0
+
+  - id: grid_first_stop_soc
+    name: "Stop Discharge SOC (Grid First)"
+    register_type: holding
+    address: 3037
+    entity_type: number
+    data_type: UINT16
+    unit: "%"
+    min: 1
+    max: 100
+    precision: 0
+
+  - id: bat_first_discharge_rate
+    name: "Discharge Power Rate (Bat First)"
+    register_type: holding
+    address: 3047
+    entity_type: number
+    data_type: UINT16
+    min: 1
+    max: 100
+    precision: 0
+
+  - id: bat_first_stop_soc
+    name: "Stop Charge SOC (Bat First)"
+    register_type: holding
+    address: 3048
+    entity_type: number
+    data_type: UINT16
+    unit: "%"
+    min: 1
+    max: 100
+    precision: 0
+
+  - id: ac_charge_enable
+    name: "AC Charge Enable"
+    register_type: holding
+    address: 3049
+    entity_type: switch
+
+  # ── Inverter status ───────────────────────────────────────────────────────
+  - id: machine_status
+    name: "Inverter Status"
+    register_type: holding
+    address: 3000
+    entity_type: sensor
+    data_type: UINT16
+    value_map:
+      0: "Standby"
+      1: "Normal"
+      3: "Fault"
+      4: "Flash"
+
+  # ── PV inputs ─────────────────────────────────────────────────────────────
+  - id: pv_total_power
+    name: "PV Total Power"
+    register_type: holding
+    address: 3001
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+
+  - id: pv1_voltage
+    name: "PV1 Voltage"
+    register_type: holding
+    address: 3003
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+
+  - id: pv1_current
+    name: "PV1 Current"
+    register_type: holding
+    address: 3004
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 2
+
+  - id: pv1_power
+    name: "PV1 Power"
+    register_type: holding
+    address: 3005
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+
+  - id: pv2_voltage
+    name: "PV2 Voltage"
+    register_type: holding
+    address: 3007
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+
+  - id: pv2_current
+    name: "PV2 Current"
+    register_type: holding
+    address: 3008
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 2
+
+  - id: pv2_power
+    name: "PV2 Power"
+    register_type: holding
+    address: 3009
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+
+  # ── Grid / output (single-phase) ──────────────────────────────────────────
+  - id: output_power
+    name: "Output Power"
+    register_type: holding
+    address: 3023
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+
+  - id: grid_frequency
+    name: "Grid Frequency"
+    register_type: holding
+    address: 3025
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.01
+    unit: "Hz"
+    device_class: frequency
+    state_class: measurement
+    precision: 3
+
+  - id: voltage
+    name: "Grid Voltage"
+    register_type: holding
+    address: 3026
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+
+  - id: current
+    name: "Grid Current"
+    register_type: holding
+    address: 3027
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 2
+
+  # ── Power flows ───────────────────────────────────────────────────────────
+  - id: power_to_user
+    name: "Power to User"
+    register_type: holding
+    address: 3041
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+
+  - id: power_to_grid
+    name: "Power to Grid"
+    register_type: holding
+    address: 3043
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+
+  - id: power_to_load
+    name: "Power to Load"
+    register_type: holding
+    address: 3045
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+
+  - id: work_time_total
+    name: "Work Time Total"
+    register_type: holding
+    address: 3047
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.5
+    unit: "s"
+    state_class: total_increasing
+    precision: 0
+    entity_category: diagnostic
+
+  # ── Energy counters ───────────────────────────────────────────────────────
+  - id: energy_today
+    name: "Energy Today"
+    register_type: holding
+    address: 3049
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+
+  - id: energy_total
+    name: "Energy Total"
+    register_type: holding
+    address: 3051
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  - id: pv_energy_total
+    name: "PV Energy Total"
+    register_type: holding
+    address: 3053
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  - id: pv1_energy_today
+    name: "PV1 Energy Today"
+    register_type: holding
+    address: 3055
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+
+  - id: pv1_energy_total
+    name: "PV1 Energy Total"
+    register_type: holding
+    address: 3057
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  - id: pv2_energy_today
+    name: "PV2 Energy Today"
+    register_type: holding
+    address: 3059
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+
+  - id: pv2_energy_total
+    name: "PV2 Energy Total"
+    register_type: holding
+    address: 3061
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  - id: energy_to_user_today
+    name: "Energy to User Today"
+    register_type: holding
+    address: 3067
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+
+  - id: energy_to_user_total
+    name: "Energy to User Total"
+    register_type: holding
+    address: 3069
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  - id: energy_to_grid_today
+    name: "Energy to Grid Today"
+    register_type: holding
+    address: 3071
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+
+  - id: energy_to_grid_total
+    name: "Energy to Grid Total"
+    register_type: holding
+    address: 3073
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  - id: energy_to_load_today
+    name: "Energy to Load Today"
+    register_type: holding
+    address: 3075
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+
+  - id: energy_to_load_total
+    name: "Energy to Load Total"
+    register_type: holding
+    address: 3077
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  # ── Diagnostics ───────────────────────────────────────────────────────────
+  - id: derating_mode
+    name: "Derating Mode"
+    register_type: holding
+    address: 3086
+    entity_type: sensor
+    data_type: UINT16
+    entity_category: diagnostic
+    value_map:
+      0: "No Derating"
+      1: "PV High"
+      2: "Power Constant"
+      3: "Grid Voltage High"
+      4: "Frequency High"
+      5: "DC Source Mode"
+      6: "Inverter Temp"
+      7: "Active Power Order"
+      8: "Load Speed"
+      9: "Over Back By Time"
+      10: "Internal Temp"
+      11: "Output Temp"
+      12: "Line Impedance"
+      13: "Parallel Anti-Backflow"
+      14: "Local Anti-Backflow"
+
+  - id: temperature_inverter
+    name: "Inverter Temperature"
+    register_type: holding
+    address: 3093
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "°C"
+    device_class: temperature
+    state_class: measurement
+    precision: 1
+
+  - id: temperature_ipm
+    name: "IPM Temperature"
+    register_type: holding
+    address: 3094
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "°C"
+    device_class: temperature
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: temperature_boost
+    name: "Boost Temperature"
+    register_type: holding
+    address: 3095
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "°C"
+    device_class: temperature
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: p_bus_voltage
+    name: "P Bus Voltage"
+    register_type: holding
+    address: 3098
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: n_bus_voltage
+    name: "N Bus Voltage"
+    register_type: holding
+    address: 3099
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: power_factor
+    name: "Output Power Factor"
+    register_type: holding
+    address: 3100
+    entity_type: sensor
+    data_type: UINT16
+    device_class: power_factor
+    state_class: measurement
+
+  - id: output_power_percent
+    name: "Output Power Percent"
+    register_type: holding
+    address: 3101
+    entity_type: sensor
+    data_type: UINT16
+    unit: "%"
+    state_class: measurement
+    precision: 2
+    entity_category: diagnostic
+
+  - id: fault_code
+    name: "Fault Code"
+    register_type: holding
+    address: 3105
+    entity_type: sensor
+    data_type: UINT16
+    entity_category: diagnostic
+
+  - id: warning_code
+    name: "Warning Code"
+    register_type: holding
+    address: 3106
+    entity_type: sensor
+    data_type: UINT16
+    entity_category: diagnostic
+
+  # ── Battery ───────────────────────────────────────────────────────────────
+  - id: battery_discharge_energy_today
+    name: "Battery Discharge Energy Today"
+    register_type: holding
+    address: 3125
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+
+  - id: battery_discharge_energy_total
+    name: "Battery Discharge Energy Total"
+    register_type: holding
+    address: 3127
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  - id: battery_charge_energy_today
+    name: "Battery Charge Energy Today"
+    register_type: holding
+    address: 3129
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+
+  - id: battery_charge_energy_total
+    name: "Battery Charge Energy Total"
+    register_type: holding
+    address: 3131
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  - id: work_mode
+    name: "Work Mode"
+    register_type: holding
+    address: 3144
+    entity_type: sensor
+    data_type: UINT16
+    value_map:
+      0: "Load First"
+      1: "Battery First"
+      2: "Grid First"
+
+  - id: storage_fault_code
+    name: "Storage Fault Code"
+    register_type: holding
+    address: 3167
+    entity_type: sensor
+    data_type: UINT16
+    entity_category: diagnostic
+
+  - id: storage_warning_code
+    name: "Storage Warning Code"
+    register_type: holding
+    address: 3168
+    entity_type: sensor
+    data_type: UINT16
+    entity_category: diagnostic
+
+  - id: battery_voltage
+    name: "Battery Voltage"
+    register_type: holding
+    address: 3169
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.01
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 2
+
+  - id: battery_current
+    name: "Battery Current"
+    register_type: holding
+    address: 3170
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 2
+
+  - id: battery_soc
+    name: "Battery State of Charge"
+    register_type: holding
+    address: 3171
+    entity_type: sensor
+    data_type: UINT16
+    unit: "%"
+    device_class: battery
+    state_class: measurement
+    precision: 0
+
+  - id: battery_discharge_power
+    name: "Battery Discharge Power"
+    register_type: holding
+    address: 3178
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+
+  - id: battery_charge_power
+    name: "Battery Charge Power"
+    register_type: holding
+    address: 3180
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
