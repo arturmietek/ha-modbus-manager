@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from modbus_device.decoder import apply_bitmask, apply_value_map, decode_value
+from modbus_device.decoder import apply_bitmask, apply_value_map, decode_value, format_value
 
 
 # ── decode_value ──────────────────────────────────────────────────────────────
@@ -114,6 +114,72 @@ class TestDecodeSTRING:
         assert decode_value(regs, "STRING") == "SF4ES005"
 
 
+class TestDecodeINT64:
+    def _regs(self, value: int) -> list[int]:
+        packed = struct.pack(">q", value)
+        return [struct.unpack(">H", packed[i:i+2])[0] for i in range(0, 8, 2)]
+
+    def test_zero(self):
+        assert decode_value([0, 0, 0, 0], "INT64") == 0.0
+
+    def test_one(self):
+        assert decode_value(self._regs(1), "INT64") == pytest.approx(1.0)
+
+    def test_large_positive(self):
+        v = 1_000_000_000_000
+        assert decode_value(self._regs(v), "INT64") == pytest.approx(float(v))
+
+    def test_negative_one(self):
+        assert decode_value(self._regs(-1), "INT64") == pytest.approx(-1.0)
+
+    def test_negative_large(self):
+        v = -1_000_000_000_000
+        assert decode_value(self._regs(v), "INT64") == pytest.approx(float(v))
+
+    def test_little_endian(self):
+        regs_big = self._regs(9876543210)
+        regs_little = list(reversed(regs_big))
+        assert decode_value(regs_little, "INT64", "LITTLE") == pytest.approx(9876543210.0)
+
+    def test_scale(self):
+        regs = self._regs(10000)
+        assert decode_value(regs, "INT64", scale=0.01) == pytest.approx(100.0)
+
+
+class TestByteOrderSwap:
+    @staticmethod
+    def _swap(v: int) -> int:
+        return ((v & 0xFF) << 8) | ((v >> 8) & 0xFF)
+
+    def _pack32_big(self, value: int) -> list[int]:
+        packed = struct.pack(">I", value & 0xFFFFFFFF)
+        return [struct.unpack(">H", packed[i:i+2])[0] for i in (0, 2)]
+
+    def test_big_swap_uint32(self):
+        big_regs = self._pack32_big(0x12345678)
+        swapped = [self._swap(big_regs[0]), self._swap(big_regs[1])]
+        assert decode_value(swapped, "UINT32", "BIG_SWAP") == pytest.approx(0x12345678)
+
+    def test_little_swap_uint32(self):
+        big_regs = self._pack32_big(0x12345678)
+        swapped = [self._swap(big_regs[1]), self._swap(big_regs[0])]
+        assert decode_value(swapped, "UINT32", "LITTLE_SWAP") == pytest.approx(0x12345678)
+
+    def test_big_swap_float32(self):
+        packed = struct.pack(">f", 2.5)
+        r0 = struct.unpack(">H", packed[0:2])[0]
+        r1 = struct.unpack(">H", packed[2:4])[0]
+        swapped = [self._swap(r0), self._swap(r1)]
+        assert decode_value(swapped, "FLOAT32", "BIG_SWAP") == pytest.approx(2.5)
+
+    def test_big_and_big_swap_differ(self):
+        # Verify that BIG and BIG_SWAP actually decode differently when bytes are swapped
+        regs = [0x3F80, 0x0000]  # big-endian 1.0f
+        big_result = decode_value(regs, "FLOAT32", "BIG")
+        big_swap_result = decode_value(regs, "FLOAT32", "BIG_SWAP")
+        assert big_result != big_swap_result
+
+
 class TestDecodeUnknownType:
     def test_falls_back_to_uint16(self):
         assert decode_value([42], "NONEXISTENT") == 42
@@ -181,3 +247,50 @@ class TestApplyBitmask:
     def test_undefined_bits_ignored(self):
         # Bit 5 is set but not in bitmask — should be silently ignored
         assert apply_bitmask(0b100001, {0: "A"}) == "A"
+
+
+# ── format_value ──────────────────────────────────────────────────────────────
+
+class TestFormatValue:
+    def test_none_returns_dash(self):
+        assert format_value(None, None, "") == "—"
+
+    def test_err_passthrough(self):
+        assert format_value("ERR", None, "") == "ERR"
+
+    def test_arbitrary_string_passthrough(self):
+        assert format_value("SN1234AB", None, "") == "SN1234AB"
+
+    def test_integer_float_no_decimals(self):
+        # 42.0 should render as "42", not "42.0"
+        assert format_value(42.0, None, "") == "42"
+
+    def test_integer_float_with_unit(self):
+        assert format_value(100.0, None, "W") == "100 W"
+
+    def test_precision_zero(self):
+        assert format_value(3.7, 0, "") == "4"
+
+    def test_precision_two(self):
+        assert format_value(3.14159, 2, "") == "3.14"
+
+    def test_precision_with_unit(self):
+        assert format_value(1.5, 1, "kW") == "1.5 kW"
+
+    def test_no_unit_no_trailing_space(self):
+        result = format_value(10.0, None, "")
+        assert not result.endswith(" ")
+
+    def test_bool_true(self):
+        assert format_value(True, None, "") == "True"
+
+    def test_bool_false(self):
+        assert format_value(False, None, "") == "False"
+
+    def test_large_float_uses_scientific(self):
+        # Values ≥ 1e9 exceed the int-coercion guard and use 4g format
+        result = format_value(1.5e10, None, "")
+        assert "e" in result.lower()
+
+    def test_small_nonzero_decimal(self):
+        assert format_value(0.001, 3, "") == "0.001"
