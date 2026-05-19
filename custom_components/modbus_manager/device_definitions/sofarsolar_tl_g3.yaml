@@ -267,7 +267,6 @@ entities:
     validation:
       min: 0.0
       max: "{rated_power_kw * 12}"
-      max_delta: "{rated_power_kw * 0.5}"
 
   # ── Temperatures ───────────────────────────────────────────────────────────
   - id: module_temperature
