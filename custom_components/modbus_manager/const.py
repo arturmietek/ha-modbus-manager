@@ -74,6 +74,8 @@ ENTITY_TYPE_COVER = "cover"
 # Coordinator update interval defaults (seconds)
 DEFAULT_SCAN_INTERVAL = 10
 DEFAULT_TIMEOUT = 3
+# Offline backoff: max interval a device can be pushed to when it stops responding (5 min)
+OFFLINE_BACKOFF_CAP_S = 300
 
 # RTU defaults
 DEFAULT_BAUDRATE = 9600

@@ -31,6 +31,7 @@ from .const import (
     CONF_DEVICE_PARAMS,
     CONF_DEVICE_ENABLED,
     DEFAULT_SCAN_INTERVAL,
+    OFFLINE_BACKOFF_CAP_S,
     REGISTER_COIL,
     REGISTER_DISCRETE_INPUT,
     REGISTER_HOLDING,
@@ -164,7 +165,10 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """Fetch data from all devices on this bus."""
         if not self._client or not self._client.connected:
-            connected = await self.async_connect()
+            try:
+                connected = await self.async_connect()
+            except Exception as exc:
+                raise UpdateFailed(f"Cannot connect to Modbus bus: {exc}") from exc
             if not connected:
                 raise UpdateFailed("Cannot connect to Modbus bus")
 
@@ -180,8 +184,14 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
                 result[device_id] = self.data.get(device_id, {}) if self.data else {}
                 continue
 
-            # Skip devices whose poll interval has not elapsed yet
+            # Skip devices whose poll interval has not elapsed yet.
+            # When a device is offline, back off exponentially (2x per step) up to
+            # OFFLINE_BACKOFF_CAP_S so we don't hammer the bus all night.
             device_interval = self._device_intervals.get(device_id, self._bus_scan_interval)
+            fail_count = self._failure_counts.get(device_id, 0)
+            if fail_count >= self._offline_warn_threshold:
+                backoff_steps = fail_count - self._offline_warn_threshold
+                device_interval = min(device_interval * (2 ** backoff_steps), OFFLINE_BACKOFF_CAP_S)
             last = self._last_polled.get(device_id, 0.0)
             if self.data is not None and (now - last) < device_interval:
                 result[device_id] = self.data.get(device_id, {})
@@ -320,6 +330,8 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
             if group_idx > 0 and inter_delay > 0:
                 await asyncio.sleep(inter_delay)
 
+            if not self._client:
+                raise ModbusException("Client disconnected during poll")
             if is_holding:
                 rr = await self._client.read_holding_registers(start, count=count, device_id=slave_id)
             else:
