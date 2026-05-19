@@ -30,7 +30,7 @@ packages = ["modbus_device"]
 modbus_device = "custom_components/modbus_manager/modbus_device"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "voluptuous>=0.13"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

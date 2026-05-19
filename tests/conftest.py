@@ -1,4 +1,4 @@
-"""Test configuration — stub HA deps and load coordinator directly."""
+"""Test configuration — stub HA deps and load coordinator + config_flow directly."""
 import importlib.util
 import sys
 import types
@@ -24,13 +24,15 @@ def _stub(name: str) -> types.ModuleType:
     return mod
 
 
-# ── 1. Stub homeassistant — only the symbols coordinator.py uses ──────────────
+# ── 1. Stub homeassistant — symbols used by coordinator + config_flow ─────────
 
 for _name in [
     "homeassistant",
     "homeassistant.core",
     "homeassistant.helpers",
     "homeassistant.helpers.update_coordinator",
+    "homeassistant.config_entries",
+    "homeassistant.data_entry_flow",
 ]:
     _stub(_name)
 
@@ -44,7 +46,26 @@ class _FakeDUC:
 _uc = sys.modules["homeassistant.helpers.update_coordinator"]
 _uc.DataUpdateCoordinator = _FakeDUC
 _uc.UpdateFailed = Exception
-sys.modules["homeassistant.core"].HomeAssistant = MagicMock
+
+_core = sys.modules["homeassistant.core"]
+_core.HomeAssistant = MagicMock
+_core.callback = lambda f: f  # callback is used as a decorator
+
+class _FakeConfigFlow:
+    """Minimal ConfigFlow stand-in that accepts domain= keyword in subclasses."""
+    def __init_subclass__(cls, domain=None, **kwargs):
+        super().__init_subclass__(**kwargs)
+
+class _FakeOptionsFlow:
+    pass
+
+_ce = sys.modules["homeassistant.config_entries"]
+_ce.ConfigFlow = _FakeConfigFlow
+_ce.OptionsFlow = _FakeOptionsFlow
+_ce.ConfigEntry = MagicMock
+
+_df = sys.modules["homeassistant.data_entry_flow"]
+_df.FlowResult = dict
 
 # ── 2. Load dependency chain bottom-up (no __init__.py involved) ──────────────
 
@@ -61,3 +82,6 @@ sys.modules["custom_components.modbus_manager.modbus_device"] = sys.modules["mod
 
 _load_direct("custom_components.modbus_manager.coordinator",
              COMPONENT / "coordinator.py")
+
+_load_direct("custom_components.modbus_manager.config_flow",
+             COMPONENT / "config_flow.py")
