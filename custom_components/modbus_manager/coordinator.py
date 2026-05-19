@@ -184,14 +184,11 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
                 result[device_id] = self.data.get(device_id, {}) if self.data else {}
                 continue
 
-            # Skip devices whose poll interval has not elapsed yet.
-            # When a device is offline, back off exponentially (2x per step) up to
-            # OFFLINE_BACKOFF_CAP_S so we don't hammer the bus all night.
-            device_interval = self._device_intervals.get(device_id, self._bus_scan_interval)
-            fail_count = self._failure_counts.get(device_id, 0)
-            if fail_count >= self._offline_warn_threshold:
-                backoff_steps = fail_count - self._offline_warn_threshold
-                device_interval = min(device_interval * (2 ** backoff_steps), OFFLINE_BACKOFF_CAP_S)
+            device_interval = _effective_interval(
+                base=self._device_intervals.get(device_id, self._bus_scan_interval),
+                fail_count=self._failure_counts.get(device_id, 0),
+                threshold=self._offline_warn_threshold,
+            )
             last = self._last_polled.get(device_id, 0.0)
             if self.data is not None and (now - last) < device_interval:
                 result[device_id] = self.data.get(device_id, {})
@@ -295,36 +292,7 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
     ) -> dict[str, Any]:
         """Batch-read a list of register entities, grouping contiguous blocks."""
         data: dict[str, Any] = {}
-
-        # Sort by address and build minimal contiguous read ranges
-        sorted_entities = sorted(entities, key=lambda e: e["address"])
-
-        groups: list[tuple[int, int, list[dict]]] = []  # (start, count, entities)
-        current_start = None
-        current_end = None
-        current_group: list[dict] = []
-
-        for entity in sorted_entities:
-            addr = entity["address"]
-            reg_count = _reg_count(entity)
-            entity_end = addr + reg_count - 1
-
-            if current_start is None:
-                current_start = addr
-                current_end = entity_end
-                current_group = [entity]
-            elif addr <= current_end + 1:
-                # Extend current group
-                current_end = max(current_end, entity_end)
-                current_group.append(entity)
-            else:
-                groups.append((current_start, current_end - current_start + 1, current_group))
-                current_start = addr
-                current_end = entity_end
-                current_group = [entity]
-
-        if current_start is not None:
-            groups.append((current_start, current_end - current_start + 1, current_group))
+        groups = _build_groups(entities)
 
         for group_idx, (start, count, group_entities) in enumerate(groups):
             if group_idx > 0 and inter_delay > 0:
@@ -392,23 +360,21 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
         return data
 
     def _validate_and_track(self, value: Any, entity: dict, device_id: str) -> Any:
-        """Validate value against entity rules; return value to publish or last-known-good on failure.
+        """Validate value against entity rules; return value or last-known-good on failure.
 
-        Returns _WITHHELD sentinel when validation fails AND no prior good value exists (entity stays unavailable).
-        None is a valid publishable value (e.g. STATUS_UNKNOWN mapped to null in YAML).
+        Returns _WITHHELD when validation fails and there is no prior good value.
+        None is a valid publishable value (value_map entry mapped to null in YAML).
         """
         validation: dict | None = entity.get("validation")
         entity_id: str = entity["id"]
 
         if not validation or not isinstance(value, (int, float)):
-            # No validation rules or non-numeric / None from value_map — always accept
             self._last_valid.setdefault(device_id, {})[entity_id] = value
             return value
 
         min_val = validation.get("min")
         max_val = validation.get("max")
         max_delta = validation.get("max_delta")
-
         failure_reason: str | None = None
 
         if min_val is not None and value < min_val:
@@ -418,7 +384,7 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
         elif max_delta is not None:
             prev = self._last_valid.get(device_id, {}).get(entity_id)
             if prev is not None and isinstance(prev, (int, float)) and abs(value - prev) > max_delta:
-                failure_reason = f"delta {abs(value - prev):.4g} exceeds max_delta {max_delta} (prev={prev}, new={value})"
+                failure_reason = f"delta {abs(value - prev):.4g} exceeds max_delta {max_delta}"
 
         if failure_reason:
             device_cache = self._last_valid.get(device_id, {})
@@ -449,9 +415,59 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
         return not rr.isError()
 
 
+def _effective_interval(base: float, fail_count: int, threshold: int) -> float:
+    """Return poll interval with exponential backoff when a device is offline.
+
+    Doubles on every step past threshold, capped at OFFLINE_BACKOFF_CAP_S.
+    """
+    if fail_count >= threshold:
+        steps = fail_count - threshold
+        return min(base * (2 ** steps), OFFLINE_BACKOFF_CAP_S)
+    return base
+
+
+def _build_groups(entities: list[dict]) -> list[tuple[int, int, list[dict]]]:
+    """Sort entities by address and merge contiguous blocks into minimal read ranges.
+
+    Returns list of (start_addr, count, entities_in_group).
+    Entities are contiguous when the next address is within 1 register of the
+    current group end (no gap or immediately adjacent).
+    """
+    sorted_entities = sorted(entities, key=lambda e: e["address"])
+    groups: list[tuple[int, int, list[dict]]] = []
+    current_start: int | None = None
+    current_end: int | None = None
+    current_group: list[dict] = []
+
+    for entity in sorted_entities:
+        addr = entity["address"]
+        rc = _reg_count(entity)
+        entity_end = addr + rc - 1
+
+        if current_start is None:
+            current_start = addr
+            current_end = entity_end
+            current_group = [entity]
+        elif addr <= current_end + 1:
+            current_end = max(current_end, entity_end)
+            current_group.append(entity)
+        else:
+            groups.append((current_start, current_end - current_start + 1, current_group))
+            current_start = addr
+            current_end = entity_end
+            current_group = [entity]
+
+    if current_start is not None:
+        groups.append((current_start, current_end - current_start + 1, current_group))
+
+    return groups
+
+
 def _reg_count(entity: dict) -> int:
     """Return number of 16-bit registers consumed by this entity."""
     data_type = entity.get("data_type", DATA_TYPE_UINT16)
     if data_type == DATA_TYPE_STRING:
         return entity.get("register_count", 8)
     return REGISTER_COUNT.get(data_type, 1)
+
+

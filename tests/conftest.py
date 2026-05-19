@@ -1,0 +1,63 @@
+"""Test configuration — stub HA deps and load coordinator directly."""
+import importlib.util
+import sys
+import types
+from pathlib import Path
+from unittest.mock import MagicMock
+
+ROOT = Path(__file__).parent.parent
+COMPONENT = ROOT / "custom_components" / "modbus_manager"
+
+
+def _load_direct(module_name: str, file_path: Path) -> types.ModuleType:
+    """Import a .py file as *module_name* without triggering package __init__."""
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _stub(name: str) -> types.ModuleType:
+    mod = types.ModuleType(name)
+    sys.modules[name] = mod
+    return mod
+
+
+# ── 1. Stub homeassistant — only the symbols coordinator.py uses ──────────────
+
+for _name in [
+    "homeassistant",
+    "homeassistant.core",
+    "homeassistant.helpers",
+    "homeassistant.helpers.update_coordinator",
+]:
+    _stub(_name)
+
+
+class _FakeDUC:
+    """Minimal DataUpdateCoordinator stand-in."""
+    def __init__(self, hass, logger, *, name, update_interval, update_method=None):
+        self.data = None
+
+
+_uc = sys.modules["homeassistant.helpers.update_coordinator"]
+_uc.DataUpdateCoordinator = _FakeDUC
+_uc.UpdateFailed = Exception
+sys.modules["homeassistant.core"].HomeAssistant = MagicMock
+
+# ── 2. Load dependency chain bottom-up (no __init__.py involved) ──────────────
+
+_load_direct("custom_components.modbus_manager.const",
+             COMPONENT / "const.py")
+
+_load_direct("modbus_device.model",   COMPONENT / "modbus_device" / "model.py")
+_load_direct("modbus_device.decoder", COMPONENT / "modbus_device" / "decoder.py")
+_load_direct("modbus_device.loader",  COMPONENT / "modbus_device" / "loader.py")
+_load_direct("modbus_device",         COMPONENT / "modbus_device" / "__init__.py")
+
+# Alias so relative imports inside coordinator (.modbus_device, .const) resolve
+sys.modules["custom_components.modbus_manager.modbus_device"] = sys.modules["modbus_device"]
+
+_load_direct("custom_components.modbus_manager.coordinator",
+             COMPONENT / "coordinator.py")
