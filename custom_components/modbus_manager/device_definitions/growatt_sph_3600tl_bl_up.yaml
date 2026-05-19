@@ -1,18 +1,21 @@
 name: "Growatt SPH 3600TL BL-UP"
 manufacturer: "Growatt"
-model: "SPH 3600TL BL-UP"
+model: "SPH3600TL BL_UP"
 version: "1.0"
 description: >
   Single-phase hybrid inverter with battery support (BL series, AC-coupled).
-  All registers use FC03 (holding). Default slave ID: 1. Baud rate: 9600.
+  Monitoring registers use FC04 (input), configuration registers use FC03 (holding).
   Note: register map differs significantly from MOD/MIN/MIC series.
-  Source: modbus_local_gateway by timlaing.
+  Default slave ID: 1. Baud rate: 9600.
 
 poll_priority: 10
 
+polling:
+  max_read_count: 5
+
 entities:
 
-  # ── Firmware / identification ─────────────────────────────────────────────
+  # ── Firmware / identification (holding) ──────────────────────────────────
   - id: hw_version
     name: "Firmware Version"
     register_type: holding
@@ -40,7 +43,7 @@ entities:
     register_count: 5
     entity_category: diagnostic
 
-  # ── Control (writable) ────────────────────────────────────────────────────
+  # ── Control / writable (holding) ─────────────────────────────────────────
   - id: on_off
     name: "Remote On/Off"
     register_type: holding
@@ -73,11 +76,14 @@ entities:
     data_type: UINT16
     entity_category: diagnostic
     value_map:
-      0: "9600"
-      1: "19200"
-      2: "38400"
-      3: "57600"
-      4: "115200"
+      0: "9600 bps"
+      1: "38400 bps"
+
+  - id: ups_on_off
+    name: "UPS On/Off"
+    register_type: holding
+    address: 1060
+    entity_type: switch
 
   - id: priority_mode
     name: "Priority Mode"
@@ -86,15 +92,9 @@ entities:
     entity_type: sensor
     data_type: UINT16
     value_map:
-      0: "Load First"
-      1: "Battery First"
-      2: "Grid First"
-
-  - id: ups_on_off
-    name: "UPS On/Off"
-    register_type: holding
-    address: 1060
-    entity_type: switch
+      0: "Load"
+      1: "Battery"
+      2: "Grid"
 
   - id: ups_output_voltage
     name: "UPS Output Voltage"
@@ -104,8 +104,8 @@ entities:
     data_type: UINT16
     entity_category: diagnostic
     value_map:
-      0: "208V"
-      1: "230V"
+      0: "239V"
+      1: "208V"
       2: "240V"
 
   - id: discharge_power_rate
@@ -126,7 +126,7 @@ entities:
     entity_type: number
     data_type: UINT16
     unit: "%"
-    min: 0
+    min: 10
     max: 100
     precision: 0
 
@@ -137,7 +137,7 @@ entities:
     entity_type: number
     data_type: UINT16
     unit: "%"
-    min: 0
+    min: 10
     max: 100
     precision: 0
 
@@ -147,10 +147,10 @@ entities:
     address: 1092
     entity_type: switch
 
-  # ── Inverter status ───────────────────────────────────────────────────────
+  # ── Inverter status (input) ───────────────────────────────────────────────
   - id: machine_status
     name: "Inverter Status"
-    register_type: holding
+    register_type: input
     address: 0
     entity_type: sensor
     data_type: UINT16
@@ -159,10 +159,10 @@ entities:
       1: "Normal"
       3: "Fault"
 
-  # ── Grid / output (single-phase) ──────────────────────────────────────────
+  # ── Grid / output (input) ─────────────────────────────────────────────────
   - id: grid_frequency
     name: "Grid Frequency"
-    register_type: holding
+    register_type: input
     address: 37
     entity_type: sensor
     data_type: UINT16
@@ -174,7 +174,7 @@ entities:
 
   - id: voltage
     name: "Grid Voltage"
-    register_type: holding
+    register_type: input
     address: 38
     entity_type: sensor
     data_type: UINT16
@@ -186,7 +186,7 @@ entities:
 
   - id: current
     name: "Grid Current"
-    register_type: holding
+    register_type: input
     address: 39
     entity_type: sensor
     data_type: UINT16
@@ -198,21 +198,21 @@ entities:
 
   - id: output_power
     name: "Output Power"
-    register_type: holding
+    register_type: input
     address: 40
     entity_type: sensor
     data_type: UINT32
     byte_order: BIG
     scale: 0.1
-    unit: "W"
-    device_class: power
+    unit: "VA"
+    device_class: apparent_power
     state_class: measurement
     precision: 1
 
-  # ── Temperatures ──────────────────────────────────────────────────────────
+  # ── Temperatures (input) ──────────────────────────────────────────────────
   - id: temperature_inverter
     name: "Inverter Temperature"
-    register_type: holding
+    register_type: input
     address: 93
     entity_type: sensor
     data_type: UINT16
@@ -224,7 +224,7 @@ entities:
 
   - id: temperature_ipm
     name: "IPM Temperature"
-    register_type: holding
+    register_type: input
     address: 94
     entity_type: sensor
     data_type: UINT16
@@ -237,7 +237,7 @@ entities:
 
   - id: temperature_boost
     name: "Boost Temperature"
-    register_type: holding
+    register_type: input
     address: 95
     entity_type: sensor
     data_type: UINT16
@@ -250,7 +250,7 @@ entities:
 
   - id: ac_charge_power
     name: "AC Charge Power"
-    register_type: holding
+    register_type: input
     address: 116
     entity_type: sensor
     data_type: UINT32
@@ -261,10 +261,10 @@ entities:
     state_class: measurement
     precision: 1
 
-  # ── Battery ───────────────────────────────────────────────────────────────
+  # ── Battery (input) ───────────────────────────────────────────────────────
   - id: battery_discharge_power
     name: "Battery Discharge Power"
-    register_type: holding
+    register_type: input
     address: 1009
     entity_type: sensor
     data_type: UINT32
@@ -277,7 +277,7 @@ entities:
 
   - id: battery_voltage
     name: "Battery Voltage"
-    register_type: holding
+    register_type: input
     address: 1013
     entity_type: sensor
     data_type: UINT16
@@ -289,7 +289,7 @@ entities:
 
   - id: battery_soc
     name: "Battery State of Charge"
-    register_type: holding
+    register_type: input
     address: 1014
     entity_type: sensor
     data_type: UINT16
@@ -300,7 +300,7 @@ entities:
 
   - id: power_to_user
     name: "Power to User"
-    register_type: holding
+    register_type: input
     address: 1015
     entity_type: sensor
     data_type: UINT32
@@ -313,7 +313,7 @@ entities:
 
   - id: power_to_load
     name: "Power to Load"
-    register_type: holding
+    register_type: input
     address: 1031
     entity_type: sensor
     data_type: UINT32
@@ -324,22 +324,23 @@ entities:
     state_class: measurement
     precision: 1
 
-  - id: energy_to_load_total
-    name: "Energy to Load Total"
-    register_type: holding
+  - id: power_to_load_total
+    name: "Total Power to Load"
+    register_type: input
     address: 1037
     entity_type: sensor
     data_type: UINT32
     byte_order: BIG
     scale: 0.1
-    unit: "kWh"
-    device_class: energy
-    state_class: total_increasing
-    precision: 2
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
 
   - id: battery_temperature
     name: "Battery Temperature"
-    register_type: holding
+    register_type: input
     address: 1040
     entity_type: sensor
     data_type: UINT16
@@ -351,7 +352,7 @@ entities:
 
   - id: battery_status
     name: "Battery Status"
-    register_type: holding
+    register_type: input
     address: 1041
     entity_type: sensor
     data_type: UINT16

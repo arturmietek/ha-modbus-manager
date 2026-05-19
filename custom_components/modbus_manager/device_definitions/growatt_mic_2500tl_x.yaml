@@ -4,14 +4,17 @@ model: "MIC 2500TL-X"
 version: "1.0"
 description: >
   Single-phase grid-tie string inverter with dual MPPT (no battery).
-  All registers use FC03 (holding). Default slave ID: 1. Baud rate: 9600.
-  Source: modbus_local_gateway by timlaing.
+  Monitoring registers use FC04 (input), configuration registers use FC03 (holding).
+  Default slave ID: 1. Baud rate: 9600.
 
 poll_priority: 10
 
+polling:
+  max_read_count: 5
+
 entities:
 
-  # ── Firmware / identification ─────────────────────────────────────────────
+  # ── Firmware / identification (holding) ──────────────────────────────────
   - id: hw_version
     name: "Firmware Version"
     register_type: holding
@@ -30,7 +33,16 @@ entities:
     register_count: 3
     entity_category: diagnostic
 
-  # ── Control (writable) ────────────────────────────────────────────────────
+  - id: serial_no
+    name: "Serial Number"
+    register_type: holding
+    address: 3001
+    entity_type: sensor
+    data_type: STRING
+    register_count: 14
+    entity_category: diagnostic
+
+  # ── Control / writable (holding) ─────────────────────────────────────────
   - id: on_off
     name: "Remote On/Off"
     register_type: holding
@@ -77,10 +89,10 @@ entities:
     max: 254
     precision: 0
 
-  # ── Inverter status ───────────────────────────────────────────────────────
+  # ── Inverter status (input) ───────────────────────────────────────────────
   - id: machine_status
     name: "Inverter Status"
-    register_type: holding
+    register_type: input
     address: 3000
     entity_type: sensor
     data_type: UINT16
@@ -90,10 +102,10 @@ entities:
       3: "Fault"
       4: "Flash"
 
-  # ── PV inputs ─────────────────────────────────────────────────────────────
+  # ── PV inputs (input) ─────────────────────────────────────────────────────
   - id: pv_total_power
     name: "PV Total Power"
-    register_type: holding
+    register_type: input
     address: 3001
     entity_type: sensor
     data_type: UINT32
@@ -106,7 +118,7 @@ entities:
 
   - id: pv1_voltage
     name: "PV1 Voltage"
-    register_type: holding
+    register_type: input
     address: 3003
     entity_type: sensor
     data_type: UINT16
@@ -118,7 +130,7 @@ entities:
 
   - id: pv1_current
     name: "PV1 Current"
-    register_type: holding
+    register_type: input
     address: 3004
     entity_type: sensor
     data_type: UINT16
@@ -130,7 +142,7 @@ entities:
 
   - id: pv1_power
     name: "PV1 Power"
-    register_type: holding
+    register_type: input
     address: 3005
     entity_type: sensor
     data_type: UINT32
@@ -143,7 +155,7 @@ entities:
 
   - id: pv2_voltage
     name: "PV2 Voltage"
-    register_type: holding
+    register_type: input
     address: 3007
     entity_type: sensor
     data_type: UINT16
@@ -155,7 +167,7 @@ entities:
 
   - id: pv2_current
     name: "PV2 Current"
-    register_type: holding
+    register_type: input
     address: 3008
     entity_type: sensor
     data_type: UINT16
@@ -167,7 +179,7 @@ entities:
 
   - id: pv2_power
     name: "PV2 Power"
-    register_type: holding
+    register_type: input
     address: 3009
     entity_type: sensor
     data_type: UINT32
@@ -178,10 +190,10 @@ entities:
     state_class: measurement
     precision: 1
 
-  # ── Grid / output (single-phase) ──────────────────────────────────────────
+  # ── Grid / output (input) ─────────────────────────────────────────────────
   - id: output_power
     name: "Output Power"
-    register_type: holding
+    register_type: input
     address: 3023
     entity_type: sensor
     data_type: UINT32
@@ -194,7 +206,7 @@ entities:
 
   - id: grid_frequency
     name: "Grid Frequency"
-    register_type: holding
+    register_type: input
     address: 3025
     entity_type: sensor
     data_type: UINT16
@@ -204,9 +216,9 @@ entities:
     state_class: measurement
     precision: 3
 
-  - id: voltage
-    name: "Grid Voltage"
-    register_type: holding
+  - id: l1_voltage
+    name: "L1 Voltage"
+    register_type: input
     address: 3026
     entity_type: sensor
     data_type: UINT16
@@ -216,9 +228,9 @@ entities:
     state_class: measurement
     precision: 1
 
-  - id: current
-    name: "Grid Current"
-    register_type: holding
+  - id: l1_current
+    name: "L1 Current"
+    register_type: input
     address: 3027
     entity_type: sensor
     data_type: UINT16
@@ -228,10 +240,192 @@ entities:
     state_class: measurement
     precision: 2
 
-  # ── Energy counters ───────────────────────────────────────────────────────
+  - id: l1_apparent_power
+    name: "L1 Apparent Power"
+    register_type: input
+    address: 3028
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "VA"
+    device_class: apparent_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l2_voltage
+    name: "L2 Voltage"
+    register_type: input
+    address: 3030
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+
+  - id: l2_current
+    name: "L2 Current"
+    register_type: input
+    address: 3031
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 2
+
+  - id: l2_apparent_power
+    name: "L2 Apparent Power"
+    register_type: input
+    address: 3032
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "VA"
+    device_class: apparent_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l3_voltage
+    name: "L3 Voltage"
+    register_type: input
+    address: 3034
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+
+  - id: l3_current
+    name: "L3 Current"
+    register_type: input
+    address: 3035
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 2
+
+  - id: l3_apparent_power
+    name: "L3 Apparent Power"
+    register_type: input
+    address: 3036
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "VA"
+    device_class: apparent_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l12_voltage
+    name: "L1-L2 Voltage"
+    register_type: input
+    address: 3038
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l23_voltage
+    name: "L2-L3 Voltage"
+    register_type: input
+    address: 3039
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l31_voltage
+    name: "L3-L1 Voltage"
+    register_type: input
+    address: 3040
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  # ── Power flows (input) ───────────────────────────────────────────────────
+  - id: power_to_user
+    name: "Power to User"
+    register_type: input
+    address: 3041
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+
+  - id: power_to_grid
+    name: "Power to Grid"
+    register_type: input
+    address: 3043
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+
+  - id: power_to_load
+    name: "Power to Load"
+    register_type: input
+    address: 3045
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+
+  - id: work_time_total
+    name: "Work Time Total"
+    register_type: input
+    address: 3047
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.5
+    unit: "s"
+    state_class: total_increasing
+    precision: 0
+    entity_category: diagnostic
+
+  # ── Energy counters (input) ───────────────────────────────────────────────
   - id: energy_today
     name: "Energy Today"
-    register_type: holding
+    register_type: input
     address: 3049
     entity_type: sensor
     data_type: UINT32
@@ -244,7 +438,7 @@ entities:
 
   - id: energy_total
     name: "Energy Total"
-    register_type: holding
+    register_type: input
     address: 3051
     entity_type: sensor
     data_type: UINT32
@@ -257,7 +451,7 @@ entities:
 
   - id: pv_energy_total
     name: "PV Energy Total"
-    register_type: holding
+    register_type: input
     address: 3053
     entity_type: sensor
     data_type: UINT32
@@ -270,7 +464,7 @@ entities:
 
   - id: pv1_energy_today
     name: "PV1 Energy Today"
-    register_type: holding
+    register_type: input
     address: 3055
     entity_type: sensor
     data_type: UINT32
@@ -283,7 +477,7 @@ entities:
 
   - id: pv1_energy_total
     name: "PV1 Energy Total"
-    register_type: holding
+    register_type: input
     address: 3057
     entity_type: sensor
     data_type: UINT32
@@ -296,7 +490,7 @@ entities:
 
   - id: pv2_energy_today
     name: "PV2 Energy Today"
-    register_type: holding
+    register_type: input
     address: 3059
     entity_type: sensor
     data_type: UINT32
@@ -309,7 +503,7 @@ entities:
 
   - id: pv2_energy_total
     name: "PV2 Energy Total"
-    register_type: holding
+    register_type: input
     address: 3061
     entity_type: sensor
     data_type: UINT32
@@ -320,10 +514,88 @@ entities:
     state_class: total_increasing
     precision: 2
 
-  # ── Diagnostics ───────────────────────────────────────────────────────────
+  - id: energy_to_user_today
+    name: "Energy to User Today"
+    register_type: input
+    address: 3067
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+
+  - id: energy_to_user_total
+    name: "Energy to User Total"
+    register_type: input
+    address: 3069
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  - id: energy_to_grid_today
+    name: "Energy to Grid Today"
+    register_type: input
+    address: 3071
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+
+  - id: energy_to_grid_total
+    name: "Energy to Grid Total"
+    register_type: input
+    address: 3073
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  - id: energy_to_load_today
+    name: "Energy to Load Today"
+    register_type: input
+    address: 3075
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+
+  - id: energy_to_load_total
+    name: "Energy to Load Total"
+    register_type: input
+    address: 3077
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  # ── Diagnostics (input) ───────────────────────────────────────────────────
   - id: derating_mode
     name: "Derating Mode"
-    register_type: holding
+    register_type: input
     address: 3086
     entity_type: sensor
     data_type: UINT16
@@ -342,10 +614,14 @@ entities:
       10: "Internal Temp"
       11: "Output Temp"
       12: "Line Impedance"
+      13: "Parallel Anti-Backflow"
+      14: "Local Anti-Backflow"
+      15: "BDC Load Priority"
+      16: "Check CT Error"
 
   - id: temperature_inverter
     name: "Inverter Temperature"
-    register_type: holding
+    register_type: input
     address: 3093
     entity_type: sensor
     data_type: UINT16
@@ -357,7 +633,7 @@ entities:
 
   - id: temperature_ipm
     name: "IPM Temperature"
-    register_type: holding
+    register_type: input
     address: 3094
     entity_type: sensor
     data_type: UINT16
@@ -370,8 +646,21 @@ entities:
 
   - id: temperature_boost
     name: "Boost Temperature"
-    register_type: holding
+    register_type: input
     address: 3095
+    entity_type: sensor
+    data_type: UINT16
+    scale: 0.1
+    unit: "°C"
+    device_class: temperature
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: temperature_comms
+    name: "Comms Board Temperature"
+    register_type: input
+    address: 3097
     entity_type: sensor
     data_type: UINT16
     scale: 0.1
@@ -383,7 +672,7 @@ entities:
 
   - id: p_bus_voltage
     name: "P Bus Voltage"
-    register_type: holding
+    register_type: input
     address: 3098
     entity_type: sensor
     data_type: UINT16
@@ -396,7 +685,7 @@ entities:
 
   - id: n_bus_voltage
     name: "N Bus Voltage"
-    register_type: holding
+    register_type: input
     address: 3099
     entity_type: sensor
     data_type: UINT16
@@ -409,16 +698,49 @@ entities:
 
   - id: power_factor
     name: "Output Power Factor"
-    register_type: holding
+    register_type: input
     address: 3100
     entity_type: sensor
     data_type: UINT16
     device_class: power_factor
     state_class: measurement
 
+  - id: output_power_percent
+    name: "Output Power Percent"
+    register_type: input
+    address: 3101
+    entity_type: sensor
+    data_type: UINT16
+    unit: "%"
+    state_class: measurement
+    precision: 2
+    entity_category: diagnostic
+
+  - id: output_power_limit
+    name: "Output Power Limit"
+    register_type: input
+    address: 3102
+    entity_type: sensor
+    data_type: UINT32
+    byte_order: BIG
+    scale: 0.1
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: standby_flag
+    name: "Standby Flag"
+    register_type: input
+    address: 3104
+    entity_type: sensor
+    data_type: UINT16
+    entity_category: diagnostic
+
   - id: fault_code
     name: "Fault Code"
-    register_type: holding
+    register_type: input
     address: 3105
     entity_type: sensor
     data_type: UINT16
@@ -426,8 +748,9 @@ entities:
 
   - id: warning_code
     name: "Warning Code"
-    register_type: holding
+    register_type: input
     address: 3106
     entity_type: sensor
     data_type: UINT16
     entity_category: diagnostic
+
