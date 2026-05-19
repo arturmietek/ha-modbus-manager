@@ -251,6 +251,43 @@ entities:
     precision: 3
     entity_category: diagnostic
 
+  # ── Phase angles ─────────────────────────────────────────────────────────
+  - id: l1_phase_angle
+    name: "L1 Phase Angle"
+    register_type: input
+    address: 36
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "°"
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l2_phase_angle
+    name: "L2 Phase Angle"
+    register_type: input
+    address: 38
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "°"
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l3_phase_angle
+    name: "L3 Phase Angle"
+    register_type: input
+    address: 40
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "°"
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
   # ── Averages ──────────────────────────────────────────────────────────────
   - id: avg_line_voltage
     name: "Average Line Voltage"
@@ -342,6 +379,97 @@ entities:
     precision: 3
     entity_category: diagnostic
 
+  - id: total_phase_angle
+    name: "Total System Phase Angle"
+    register_type: input
+    address: 66
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "°"
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  # ── Power / VA demands ───────────────────────────────────────────────────
+  - id: total_power_demand
+    name: "Total System Power Demand"
+    register_type: input
+    address: 84
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: total_power_demand_max
+    name: "Maximum Total System Power Demand"
+    register_type: input
+    address: 86
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: total_va_demand
+    name: "Total System VA Demand"
+    register_type: input
+    address: 100
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "VA"
+    device_class: apparent_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: total_va_demand_max
+    name: "Maximum Total System VA Demand"
+    register_type: input
+    address: 102
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "VA"
+    device_class: apparent_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: neutral_current_demand
+    name: "Neutral Current Demand"
+    register_type: input
+    address: 104
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 3
+    entity_category: diagnostic
+
+  - id: neutral_current_demand_max
+    name: "Maximum Neutral Current Demand"
+    register_type: input
+    address: 106
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 3
+    entity_category: diagnostic
+
   # ── Frequency ─────────────────────────────────────────────────────────────
   - id: frequency
     name: "Frequency"
@@ -379,6 +507,206 @@ entities:
     device_class: energy
     state_class: total_increasing
     precision: 2
+
+  - id: import_reactive_energy
+    name: "Import Reactive Energy"
+    register_type: input
+    address: 76
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kvarh"
+    state_class: total_increasing
+    precision: 2
+    entity_category: diagnostic
+
+  - id: export_reactive_energy
+    name: "Export Reactive Energy"
+    register_type: input
+    address: 78
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kvarh"
+    state_class: total_increasing
+    precision: 2
+    entity_category: diagnostic
+
+  - id: total_apparent_energy
+    name: "Total Apparent Energy"
+    register_type: input
+    address: 80
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kVAh"
+    state_class: total_increasing
+    precision: 2
+    entity_category: diagnostic
+
+  # ── Line-to-line voltages ─────────────────────────────────────────────────
+  - id: l12_voltage
+    name: "L1-L2 Voltage"
+    register_type: input
+    address: 200
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l23_voltage
+    name: "L2-L3 Voltage"
+    register_type: input
+    address: 202
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l31_voltage
+    name: "L3-L1 Voltage"
+    register_type: input
+    address: 204
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: avg_line_to_line_voltage
+    name: "Average Line to Line Voltage"
+    register_type: input
+    address: 206
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  # ── Neutral current ───────────────────────────────────────────────────────
+  - id: neutral_current
+    name: "Neutral Current"
+    register_type: input
+    address: 224
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 3
+    entity_category: diagnostic
+
+  # ── THD ──────────────────────────────────────────────────────────────────
+  - id: l1_voltage_thd
+    name: "L1 Voltage THD"
+    register_type: input
+    address: 234
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "%"
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l2_voltage_thd
+    name: "L2 Voltage THD"
+    register_type: input
+    address: 236
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "%"
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l3_voltage_thd
+    name: "L3 Voltage THD"
+    register_type: input
+    address: 238
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "%"
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l1_current_thd
+    name: "L1 Current THD"
+    register_type: input
+    address: 240
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "%"
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l2_current_thd
+    name: "L2 Current THD"
+    register_type: input
+    address: 242
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "%"
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l3_current_thd
+    name: "L3 Current THD"
+    register_type: input
+    address: 244
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "%"
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: avg_voltage_thd
+    name: "Average Line to Neutral Voltage THD"
+    register_type: input
+    address: 248
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "%"
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: avg_current_thd
+    name: "Average Line Current THD"
+    register_type: input
+    address: 250
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "%"
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
 
   # ── Current demands ───────────────────────────────────────────────────────
   - id: l1_current_demand
@@ -418,4 +746,185 @@ entities:
     device_class: current
     state_class: measurement
     precision: 1
+    entity_category: diagnostic
+
+  - id: l1_current_demand_max
+    name: "L1 Maximum Current Demand"
+    register_type: input
+    address: 264
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l2_current_demand_max
+    name: "L2 Maximum Current Demand"
+    register_type: input
+    address: 266
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: l3_current_demand_max
+    name: "L3 Maximum Current Demand"
+    register_type: input
+    address: 268
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  # ── Per-phase energy counters ─────────────────────────────────────────────
+  - id: total_active_energy
+    name: "Total Active Energy"
+    register_type: input
+    address: 342
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+
+  - id: total_reactive_energy
+    name: "Total Reactive Energy"
+    register_type: input
+    address: 344
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kvarh"
+    state_class: total
+    precision: 2
+    entity_category: diagnostic
+
+  - id: l1_import_energy
+    name: "L1 Import Energy"
+    register_type: input
+    address: 346
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+    entity_category: diagnostic
+
+  - id: l2_import_energy
+    name: "L2 Import Energy"
+    register_type: input
+    address: 348
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+    entity_category: diagnostic
+
+  - id: l3_import_energy
+    name: "L3 Import Energy"
+    register_type: input
+    address: 350
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+    entity_category: diagnostic
+
+  - id: l1_export_energy
+    name: "L1 Export Energy"
+    register_type: input
+    address: 352
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+    entity_category: diagnostic
+
+  - id: l2_export_energy
+    name: "L2 Export Energy"
+    register_type: input
+    address: 354
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+    entity_category: diagnostic
+
+  - id: l3_export_energy
+    name: "L3 Export Energy"
+    register_type: input
+    address: 356
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+    entity_category: diagnostic
+
+  - id: l1_total_energy
+    name: "L1 Total Energy"
+    register_type: input
+    address: 358
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+    entity_category: diagnostic
+
+  - id: l2_total_energy
+    name: "L2 Total Energy"
+    register_type: input
+    address: 360
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
+    entity_category: diagnostic
+
+  - id: l3_total_energy
+    name: "L3 Total Energy"
+    register_type: input
+    address: 362
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total
+    precision: 2
     entity_category: diagnostic
