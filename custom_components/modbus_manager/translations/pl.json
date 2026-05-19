@@ -45,11 +45,12 @@
       },
       "add_device": {
         "title": "Dodaj urządzenie — podstawowe info",
-        "description": "Interwał odpytywania: jak często urządzenie jest odczytywane. Zakres 0.5–3600 s.",
+        "description": "Interwał odpytywania: jak często urządzenie jest odczytywane. Zakres 0.5–3600 s.\nPriorytet odpytywania: urządzenia są odpytywane w kolejności rosnącej (0 = pierwsze). Zwiększ dla falowników wysyłających opóźnione odpowiedzi.",
         "data": {
           "device_name": "Nazwa urządzenia",
           "slave_id": "Modbus slave ID (1–247)",
-          "scan_interval": "Interwał odpytywania (sekundy)"
+          "scan_interval": "Interwał odpytywania (sekundy)",
+          "poll_priority": "Priorytet odpytywania (0 = najwyższy, odpytywany pierwszy)"
         }
       },
       "edit_device": {
@@ -62,7 +63,8 @@
         "title": "Edytuj urządzenie — {device_name}",
         "data": {
           "slave_id": "Modbus slave ID (1–247)",
-          "enabled": "Włącz odpytywanie (odznacz aby wstrzymać bez usuwania)"
+          "enabled": "Włącz odpytywanie (odznacz aby wstrzymać bez usuwania)",
+          "poll_priority": "Priorytet odpytywania (0 = najwyższy, odpytywany pierwszy)"
         }
       },
       "choose_definition": {

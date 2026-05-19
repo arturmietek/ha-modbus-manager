@@ -45,11 +45,12 @@
       },
       "add_device": {
         "title": "Add Device — Basic Info",
-        "description": "Poll interval: how often this device is read. Range 0.5–3600 s.",
+        "description": "Poll interval: how often this device is read. Range 0.5–3600 s.\nPoll priority: devices are polled in ascending order (0 = first). Raise for inverters that send late responses.",
         "data": {
           "device_name": "Device name",
           "slave_id": "Modbus slave ID (1–247)",
-          "scan_interval": "Poll interval (seconds)"
+          "scan_interval": "Poll interval (seconds)",
+          "poll_priority": "Poll priority (0 = highest, polled first)"
         }
       },
       "edit_device": {
@@ -62,7 +63,8 @@
         "title": "Edit Device — {device_name}",
         "data": {
           "slave_id": "Modbus slave ID (1–247)",
-          "enabled": "Enable polling (uncheck to pause without removing)"
+          "enabled": "Enable polling (uncheck to pause without removing)",
+          "poll_priority": "Poll priority (0 = highest, polled first)"
         }
       },
       "choose_definition": {

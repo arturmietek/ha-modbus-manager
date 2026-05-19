@@ -42,6 +42,7 @@ from .const import (
     CONF_DEFINITION_YAML,
     CONF_DEVICE_PARAMS,
     CONF_DEVICE_ENABLED,
+    CONF_POLL_PRIORITY,
     DEFAULT_BAUDRATE,
     DEFAULT_PARITY,
     DEFAULT_STOPBITS,
@@ -267,6 +268,7 @@ class ModbusManagerOptionsFlow(config_entries.OptionsFlow):
                     CONF_DEVICE_NAME: user_input[CONF_DEVICE_NAME],
                     CONF_SLAVE_ID: slave_id,
                     CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
+                    CONF_POLL_PRIORITY: user_input[CONF_POLL_PRIORITY],
                 }
                 return await self.async_step_choose_definition()
 
@@ -280,6 +282,9 @@ class ModbusManagerOptionsFlow(config_entries.OptionsFlow):
                     ),
                     vol.Required(CONF_SCAN_INTERVAL, default=bus_default): vol.All(
                         vol.Coerce(float), vol.Range(min=0.5, max=3600)
+                    ),
+                    vol.Required(CONF_POLL_PRIORITY, default=0): vol.All(
+                        vol.Coerce(int), vol.Range(min=0, max=100)
                     ),
                 }
             ),
@@ -452,7 +457,12 @@ class ModbusManagerOptionsFlow(config_entries.OptionsFlow):
                 errors[CONF_SLAVE_ID] = "duplicate_slave_id"
             else:
                 self._devices = [
-                    {**d, CONF_SLAVE_ID: slave_id, CONF_DEVICE_ENABLED: user_input[CONF_DEVICE_ENABLED]}
+                    {
+                        **d,
+                        CONF_SLAVE_ID: slave_id,
+                        CONF_DEVICE_ENABLED: user_input[CONF_DEVICE_ENABLED],
+                        CONF_POLL_PRIORITY: user_input[CONF_POLL_PRIORITY],
+                    }
                     if d[CONF_DEVICE_ID] == self._editing_device_id
                     else d
                     for d in self._devices
@@ -467,6 +477,9 @@ class ModbusManagerOptionsFlow(config_entries.OptionsFlow):
                         vol.Coerce(int), vol.Range(min=1, max=247)
                     ),
                     vol.Required(CONF_DEVICE_ENABLED, default=device.get(CONF_DEVICE_ENABLED, True)): bool,
+                    vol.Required(CONF_POLL_PRIORITY, default=device.get(CONF_POLL_PRIORITY, 0)): vol.All(
+                        vol.Coerce(int), vol.Range(min=0, max=100)
+                    ),
                 }
             ),
             description_placeholders={"device_name": device[CONF_DEVICE_NAME]},
