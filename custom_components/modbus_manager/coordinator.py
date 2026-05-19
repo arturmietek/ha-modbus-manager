@@ -161,6 +161,8 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
         if self._client:
             self._client.close()
             self._client = None
+            # Yield to event loop so transport callbacks finish before HA tears down
+            await asyncio.sleep(0)
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """Fetch data from all devices on this bus."""
