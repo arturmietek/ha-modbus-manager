@@ -10,6 +10,8 @@ description: >
   Register map identical to KTL-X except no DC2 and no AC2/AC3 phases.
   Tested register layout from modbus2mqtt v0.3.
 
+poll_priority: 10
+
 polling:
   inter_read_delay_ms: 200
 

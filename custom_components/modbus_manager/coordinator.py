@@ -30,6 +30,7 @@ from .const import (
     CONF_DEFINITION,
     CONF_DEVICE_PARAMS,
     CONF_DEVICE_ENABLED,
+    CONF_POLL_PRIORITY,
     DEFAULT_SCAN_INTERVAL,
     OFFLINE_BACKOFF_CAP_S,
     REGISTER_COIL,
@@ -91,7 +92,8 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
 
     def __init__(self, hass: HomeAssistant, bus_config: dict, devices: list[dict]) -> None:
         self._bus_config = bus_config
-        self._devices = [_apply_device_params(d) for d in devices]
+        prepared = [_apply_device_params(d) for d in devices]
+        self._devices = sorted(prepared, key=_device_priority)
         self._client: AsyncModbusSerialClient | AsyncModbusTcpClient | None = None
         # Consecutive failure count per device_id; warning only after OFFLINE_WARN_THRESHOLD
         self._failure_counts: dict[str, int] = {}
@@ -463,6 +465,18 @@ def _build_groups(entities: list[dict]) -> list[tuple[int, int, list[dict]]]:
         groups.append((current_start, current_end - current_start + 1, current_group))
 
     return groups
+
+
+def _device_priority(device: dict) -> int:
+    """Return poll priority for a device (lower = polled first).
+
+    Checks per-device config key first, then falls back to the YAML definition's
+    poll_priority field. Defaults to 0 (highest priority).
+    """
+    explicit = device.get(CONF_POLL_PRIORITY)
+    if explicit is not None:
+        return int(explicit)
+    return int(device.get(CONF_DEFINITION, {}).get("poll_priority", 0))
 
 
 def _reg_count(entity: dict) -> int:

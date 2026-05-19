@@ -9,6 +9,8 @@ description: >
   Default slave ID: 1. Default baud rate: 9600 bps.
   Tested register layout from modbus2mqtt v0.3.
 
+poll_priority: 10
+
 polling:
   inter_read_delay_ms: 200
 

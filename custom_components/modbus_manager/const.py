@@ -77,6 +77,10 @@ DEFAULT_TIMEOUT = 3
 # Offline backoff: max interval a device can be pushed to when it stops responding (5 min)
 OFFLINE_BACKOFF_CAP_S = 300
 
+# Polling order: lower value = polled first; 0 is the default (highest priority).
+# Increase for devices that send late stray frames (e.g. inverters that sleep at night).
+CONF_POLL_PRIORITY = "poll_priority"
+
 # RTU defaults
 DEFAULT_BAUDRATE = 9600
 DEFAULT_PARITY = "N"

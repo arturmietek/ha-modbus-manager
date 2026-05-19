@@ -5,10 +5,11 @@ import pytest
 from custom_components.modbus_manager.coordinator import (
     _WITHHELD as WITHHELD,
     _build_groups as build_groups,
+    _device_priority as device_priority,
     _effective_interval as effective_interval,
     ModbusManagerCoordinator,
 )
-from custom_components.modbus_manager.const import OFFLINE_BACKOFF_CAP_S
+from custom_components.modbus_manager.const import OFFLINE_BACKOFF_CAP_S, CONF_POLL_PRIORITY
 
 
 def validate_and_track(value, entity, device, last_valid):
@@ -217,3 +218,39 @@ class TestValidateAndTrack:
         assert self._call(5.0, validation={"min": 10.0}, device="dev2") is WITHHELD
         # dev1 returns its fallback
         assert self._call(5.0, validation={"min": 10.0}, device="dev1") == 50.0
+
+
+# ── device_priority ───────────────────────────────────────────────────────────
+
+class TestDevicePriority:
+    def test_default_is_zero(self):
+        assert device_priority({}) == 0
+
+    def test_yaml_definition_priority(self):
+        d = {"definition": {"poll_priority": 10}}
+        assert device_priority(d) == 10
+
+    def test_per_device_config_overrides_definition(self):
+        d = {CONF_POLL_PRIORITY: 5, "definition": {"poll_priority": 10}}
+        assert device_priority(d) == 5
+
+    def test_per_device_config_zero_overrides_definition(self):
+        d = {CONF_POLL_PRIORITY: 0, "definition": {"poll_priority": 10}}
+        assert device_priority(d) == 0
+
+    def test_sort_order_lower_first(self):
+        devices = [
+            {"id": "inverter", CONF_POLL_PRIORITY: 10},
+            {"id": "meter",    CONF_POLL_PRIORITY: 0},
+            {"id": "relay",    CONF_POLL_PRIORITY: 5},
+        ]
+        ordered = sorted(devices, key=device_priority)
+        assert [d["id"] for d in ordered] == ["meter", "relay", "inverter"]
+
+    def test_same_priority_stable(self):
+        devices = [
+            {"id": "a", CONF_POLL_PRIORITY: 0},
+            {"id": "b", CONF_POLL_PRIORITY: 0},
+        ]
+        ordered = sorted(devices, key=device_priority)
+        assert [d["id"] for d in ordered] == ["a", "b"]
