@@ -30,6 +30,30 @@ _INT16_MIN = -32768
 _INT16_MAX = 32767
 
 
+def _to_raw(display_value: float, scale: float, offset: float, data_type: str) -> int | None:
+    """Convert a scaled display value back to a raw register integer.
+
+    Returns None when the result falls outside the valid range for data_type.
+    Negative INT16 values are encoded as two's-complement UINT16.
+    """
+    raw = round((display_value - offset) / scale)
+
+    if data_type == DATA_TYPE_UINT16:
+        if 0 <= raw <= _UINT16_MAX:
+            return raw
+        return None
+
+    if data_type == DATA_TYPE_INT16:
+        if _INT16_MIN <= raw <= _INT16_MAX:
+            return raw if raw >= 0 else raw + 0x10000
+        return None
+
+    # Fallback for unknown types: treat as UINT16
+    if 0 <= raw <= _UINT16_MAX:
+        return raw
+    return None
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -117,21 +141,4 @@ class ModbusManagerNumber(ModbusManagerEntity, NumberEntity, RestoreEntity):
             _LOGGER.warning("Write failed for %s address %d", self._entity_id_key, address)
 
     def _to_raw(self, display_value: float) -> int | None:
-        """Convert scaled display value back to raw register integer."""
-        raw = round((display_value - self._offset) / self._scale)
-
-        if self._data_type == DATA_TYPE_UINT16:
-            if 0 <= raw <= _UINT16_MAX:
-                return raw
-            return None
-
-        if self._data_type == DATA_TYPE_INT16:
-            if _INT16_MIN <= raw <= _INT16_MAX:
-                # Two's complement uint16 for negative values
-                return raw if raw >= 0 else raw + 0x10000
-            return None
-
-        # Fallback: accept any non-negative uint16
-        if 0 <= raw <= _UINT16_MAX:
-            return raw
-        return None
+        return _to_raw(display_value, self._scale, self._offset, self._data_type)

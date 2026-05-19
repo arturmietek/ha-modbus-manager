@@ -79,9 +79,14 @@ _switch_mod.SwitchEntity = object
 _switch_mod.SwitchDeviceClass = MagicMock
 
 _number_mod = sys.modules["homeassistant.components.number"]
-_number_mod.NumberEntity = object
+class _NumberEntity: pass
+class _RestoreEntity:
+    async def async_added_to_hass(self): pass
+    async def async_get_last_state(self): return None
+
+_number_mod.NumberEntity = _NumberEntity
 _number_mod.NumberMode = MagicMock
-sys.modules["homeassistant.helpers.restore_state"].RestoreEntity = object
+sys.modules["homeassistant.helpers.restore_state"].RestoreEntity = _RestoreEntity
 
 _cover_mod = sys.modules["homeassistant.components.cover"]
 _cover_mod.CoverEntity = object
@@ -163,3 +168,6 @@ _load_direct("custom_components.modbus_manager.entity_base",
 
 _load_direct("custom_components.modbus_manager.sensor",
              COMPONENT / "sensor.py")
+
+_load_direct("custom_components.modbus_manager.number",
+             COMPONENT / "number.py")
