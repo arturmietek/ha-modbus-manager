@@ -7,12 +7,8 @@ description: >
   Supports import/export energy, power, apparent power, reactive power,
   power factor, frequency, demand values and reactive energy.
 
-# All input registers are FLOAT32 — coordinator will auto-batch contiguous groups:
-#   Group A: 0–36    phase measurements + angle
-#   Group B: 70–78   frequency + energy
-#   Group C: 84–94   power demands
-#   Group D: 258, 264  current demands
-#   Group E: 342–344   total energy
+polling:
+  max_read_count: 4     # SDM230 RTU responses fragment above ~13 bytes (same as SDM630)
 
 entities:
 

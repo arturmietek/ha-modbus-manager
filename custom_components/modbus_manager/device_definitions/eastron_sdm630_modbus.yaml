@@ -7,11 +7,8 @@ description: >
   Supports import/export energy, per-phase and total: voltage, current, power,
   apparent power, reactive power, power factor, frequency, and demand values.
 
-# All input registers are FLOAT32 — coordinator will auto-batch contiguous groups:
-#   Group A: 0–35    phase measurements
-#   Group B: 42–63   averages + totals
-#   Group C: 70–75   frequency + energy
-#   Group D: 258–263 current demands
+polling:
+  max_read_count: 4     # SDM630 RTU responses for demand registers fragment above ~13 bytes
 
 entities:
 
