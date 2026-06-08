@@ -697,18 +697,19 @@ def _render(stdscr, title: str, all_data: dict, rows: list[_Row],
 
 # ── monitor loop ──────────────────────────────────────────────────────────────
 
-def _build_client(conn_info: dict):
+def _build_client(conn_info: dict, timeout: float | None = None):
     """Create and return the appropriate Modbus client (not yet connected)."""
     if conn_info["type"] == "tcp":
         return ModbusTcpClient(
             host=conn_info["host"],
             port=conn_info["port"],
-            timeout=3,
+            timeout=timeout if timeout is not None else 3,
         )
     return ModbusSerialClient(
         port=conn_info["port"],
         baudrate=conn_info["baud"],
-        bytesize=8, parity="N", stopbits=1, timeout=0.3,
+        bytesize=8, parity="N", stopbits=1,
+        timeout=timeout if timeout is not None else 0.3,
     )
 
 
@@ -811,12 +812,144 @@ def _run_monitor(stdscr, interval: float, conn_info: dict,
         client.close()
 
 
+# ── bus scan (no YAML required) ───────────────────────────────────────────────
+
+def cmd_scan(conn_info: dict, scan_from: int, scan_to: int,
+             timeout: float, definition=None) -> None:
+    """
+    Scan slave IDs [scan_from, scan_to].
+
+    With definition (YAML): probes the first entity's register (known address,
+    FC, data type) and decodes the value — so you see e.g. "240.3 V" for an
+    SDM630 or "Normal" for a KTL-X instead of raw hex.
+
+    Without definition: tries FC03 then FC04 at address 0 and shows raw hex.
+    """
+    client = _build_client(conn_info, timeout=timeout)
+    conn_str = _conn_label(conn_info)
+    print(f"Connecting: {conn_str}")
+    if not client.connect():
+        print(f"ERROR: cannot connect to {conn_str}")
+        sys.exit(1)
+
+    # ── determine probe parameters ────────────────────────────────────────────
+    probe_entity = None
+    if definition and _YAML_SUPPORT and definition.entities:
+        probe_entity = definition.entities[0]
+
+    if probe_entity is not None:
+        _fc_map = {
+            "holding":        ("FC03", client.read_holding_registers),
+            "input":          ("FC04", client.read_input_registers),
+            "coil":           ("FC01", client.read_coils),
+            "discrete_input": ("FC02", client.read_discrete_inputs),
+        }
+        fc_label, read_fn = _fc_map.get(probe_entity.register_type, ("FC03", client.read_holding_registers))
+        probe_addr  = probe_entity.address
+        probe_count = REGISTER_COUNT.get(probe_entity.data_type, 1) if _YAML_SUPPORT else 1
+        probe_desc  = f"{probe_entity.name}  addr {probe_addr}  {fc_label}"
+    else:
+        fc_label, read_fn, probe_addr, probe_count = None, None, None, None
+        probe_desc = "FC03/FC04 addr 0 (no YAML)"
+
+    # ── print header ──────────────────────────────────────────────────────────
+    sep = "─" * 70
+    print(f"\n{sep}")
+    dev_label = f"  [{definition.name}]" if definition else ""
+    print(f"SCAN  {conn_str}  slaves {scan_from}–{scan_to}{dev_label}")
+    print(f"Probe: {probe_desc}")
+    print(f"{sep}")
+    print(f"  {'slave':>5}  {'result':45s}  raw")
+    print(f"  {'─'*5}  {'─'*45}  {'─'*20}")
+
+    found = []
+    try:
+        for slave in range(scan_from, scan_to + 1):
+            if probe_entity is not None:
+                # YAML-guided probe
+                try:
+                    rr   = read_fn(probe_addr, count=probe_count, device_id=slave)
+                    regs = getattr(rr, "registers", None) or getattr(rr, "bits", None)
+                    ok   = not rr.isError() and regs is not None
+                except (ModbusException, Exception):
+                    ok, regs = False, None
+
+                if ok:
+                    raw_hex = " ".join(f"0x{r:04X}" for r in regs)
+                    try:
+                        val = decode_value(regs, probe_entity.data_type,
+                                           probe_entity.byte_order,
+                                           probe_entity.scale, probe_entity.offset)
+                        val = apply_value_map(val, probe_entity.value_map)
+                        display = format_value(val, probe_entity.precision,
+                                               probe_entity.unit or "")
+                    except Exception:
+                        display = raw_hex
+                    label = f"{probe_entity.name} = {display}"
+                    print(f"  {slave:5d}  {label:<45s}  {raw_hex}")
+                    found.append(slave)
+                else:
+                    print(f"  {slave:5d}  {'no response':<45s}")
+            else:
+                # Blind probe: FC01 coils, FC02 discrete inputs, FC03 holding, FC04 input
+                # count=8 for coil/discrete — some relay boards only respond to ≥8-bit reads
+                responded = False
+                for fc_lbl, rfn, count, attr in [
+                    ("FC01", client.read_coils,             8, "bits"),
+                    ("FC02", client.read_discrete_inputs,   8, "bits"),
+                    ("FC03", client.read_holding_registers, 1, "registers"),
+                    ("FC04", client.read_input_registers,   2, "registers"),
+                ]:
+                    try:
+                        rr   = rfn(0, count=count, device_id=slave)
+                        vals = getattr(rr, attr, [])
+                        if rr.isError() or not vals:
+                            continue
+                    except (ModbusException, Exception):
+                        continue
+
+                    if attr == "bits":
+                        raw_hex = "".join("1" if b else "0" for b in vals[:count])
+                        raw_hex = f"bits: {raw_hex}"
+                        note    = ""
+                    else:
+                        regs    = vals
+                        raw_hex = " ".join(f"0x{r:04X}" for r in regs)
+                        note    = ""
+                        if fc_lbl == "FC04" and len(regs) >= 2:
+                            try:
+                                import struct as _s
+                                fval = _s.unpack(">f", _s.pack(">HH", regs[0], regs[1]))[0]
+                                note = f"≈ {fval:.3f} (FLOAT32)"
+                            except Exception:
+                                pass
+                    label = f"{fc_lbl}  addr 0  {note}"
+                    print(f"  {slave:5d}  {label:<45s}  {raw_hex}")
+                    found.append(slave)
+                    responded = True
+                    break
+
+                if not responded:
+                    print(f"  {slave:5d}  {'no response':<45s}")
+
+            time.sleep(0.05)
+    finally:
+        client.close()
+
+    print(f"\n{sep}")
+    if found:
+        print(f"Found {len(found)} slave(s): {', '.join(str(s) for s in found)}")
+    else:
+        print("No slaves found.")
+    print(sep)
+
+
 # ── entry point ───────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="Modbus register monitor — RTU and TCP")
     parser.add_argument("preset_pos", nargs="?", metavar="PRESET",
-                        help="Device definition YAML file")
+                        help="Device definition YAML file (not required for --scan)")
     parser.add_argument("--preset",    default=None,
                         help="Same as positional PRESET (flag form)")
     # RTU options
@@ -831,33 +964,33 @@ def main():
                         help="TCP port (default: 502)")
     # Common
     parser.add_argument("--slave",     type=int, default=None, metavar="ID",
-                        help="Slave / unit ID 1–247 (YAML mode); skips the config screen")
+                        help="Slave / unit ID 1–247 (monitor mode); skips the config screen")
     parser.add_argument("--interval",  type=float, default=0.5,
                         help="Refresh interval in seconds (default: 0.5)")
+    # Scan mode
+    parser.add_argument("--scan",      action="store_true",
+                        help="Scan bus for active slaves (no YAML required)")
+    parser.add_argument("--scan-from", type=int, default=1,   metavar="N",
+                        help="First slave ID to probe in scan (default: 1)")
+    parser.add_argument("--scan-to",   type=int, default=32,  metavar="N",
+                        help="Last slave ID to probe in scan (default: 32)")
+    parser.add_argument("--timeout",   type=float, default=1.0,
+                        help="Per-request timeout in seconds for scan (default: 1.0)")
     args = parser.parse_args()
 
     if args.port and args.host:
         parser.error("--port and --host are mutually exclusive; pick one transport")
 
-    # Resolve preset: positional arg takes priority over --preset flag
-    preset_str = args.preset_pos or args.preset
-    if not preset_str:
-        parser.error("PRESET argument is required")
-    preset_path = Path(preset_str)
-    if not preset_path.exists():
-        print(f"Device definition file not found: {preset_path}")
-        sys.exit(1)
-    if preset_path.suffix not in (".yaml", ".yml"):
-        print(f"Expected a YAML file (.yaml / .yml), got: {preset_path.name}")
-        sys.exit(1)
-
-    # Resolve connection
+    # ── resolve connection ────────────────────────────────────────────────────
     if args.host:
         conn_info = {"type": "tcp", "host": args.host, "port": args.tcp_port}
     elif args.port:
         conn_info = {"type": "rtu", "port": args.port, "baud": args.baud}
+    elif args.scan:
+        # scan without explicit transport → interactive picker (non-curses fallback)
+        print("Use --host or --port to specify the bus for scanning.")
+        sys.exit(1)
     else:
-        # Interactive transport selection
         transport = curses.wrapper(_select_transport)
         if transport is None:
             sys.exit(0)
@@ -872,7 +1005,31 @@ def main():
                 sys.exit(0)
             conn_info = {"type": "rtu", "port": port, "baud": args.baud}
 
-    # Load device definition
+    # ── scan mode ─────────────────────────────────────────────────────────────
+    if args.scan:
+        preset_str = args.preset_pos or args.preset
+        scan_def   = None
+        if preset_str and _YAML_SUPPORT:
+            p = Path(preset_str)
+            if p.exists() and p.suffix in (".yaml", ".yml"):
+                scan_def = load_device_definition(p)
+            else:
+                print(f"Warning: preset not found or not YAML — scanning without it")
+        cmd_scan(conn_info, args.scan_from, args.scan_to, args.timeout, scan_def)
+        return
+
+    # ── monitor mode (YAML required) ─────────────────────────────────────────
+    preset_str = args.preset_pos or args.preset
+    if not preset_str:
+        parser.error("PRESET argument is required (or use --scan to find slaves)")
+    preset_path = Path(preset_str)
+    if not preset_path.exists():
+        print(f"Device definition file not found: {preset_path}")
+        sys.exit(1)
+    if preset_path.suffix not in (".yaml", ".yml"):
+        print(f"Expected a YAML file (.yaml / .yml), got: {preset_path.name}")
+        sys.exit(1)
+
     if not _YAML_SUPPORT:
         print("modbus_device library not found — reinstall: pipx install . --force")
         sys.exit(1)
