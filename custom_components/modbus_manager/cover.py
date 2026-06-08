@@ -146,4 +146,4 @@ class ModbusManagerCover(ModbusManagerEntity, CoverEntity):
         elif reg_type == REGISTER_HOLDING:
             await self.coordinator.async_write_register(self._slave_id, address, int(value))
 
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_force_refresh_device(self._device_config["device_id"])

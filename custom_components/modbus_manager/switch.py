@@ -47,9 +47,9 @@ class ModbusManagerSwitch(ModbusManagerEntity, SwitchEntity):
     async def async_turn_on(self, **kwargs) -> None:
         success = await self.coordinator.async_write_coil(self._slave_id, self._address, True)
         if success:
-            await self.coordinator.async_request_refresh()
+            await self.coordinator.async_force_refresh_device(self._device_config["device_id"])
 
     async def async_turn_off(self, **kwargs) -> None:
         success = await self.coordinator.async_write_coil(self._slave_id, self._address, False)
         if success:
-            await self.coordinator.async_request_refresh()
+            await self.coordinator.async_force_refresh_device(self._device_config["device_id"])
