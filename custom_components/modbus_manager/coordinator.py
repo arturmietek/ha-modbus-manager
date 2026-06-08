@@ -240,6 +240,7 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
         entities: list[dict] = definition.get("entities", [])
         polling_hints: dict = definition.get("polling", {})
         inter_delay: float = polling_hints.get("inter_read_delay_ms", 0) / 1000
+        max_read_count: int = polling_hints.get("max_read_count", 125)
 
         read_types_done = 0  # counts FC types already sent, to insert delay before each subsequent one
 
@@ -281,22 +282,22 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
         holding_entities = [e for e in entities if e.get("register_type") == REGISTER_HOLDING]
         if holding_entities:
             await _maybe_delay()
-            data.update(await self._read_register_entities(holding_entities, slave_id, is_holding=True, device_id=device_id, inter_delay=inter_delay))
+            data.update(await self._read_register_entities(holding_entities, slave_id, is_holding=True, device_id=device_id, inter_delay=inter_delay, max_read_count=max_read_count))
 
         # ── Input registers ───────────────────────────────────────────────────
         input_entities = [e for e in entities if e.get("register_type") == REGISTER_INPUT]
         if input_entities:
             await _maybe_delay()
-            data.update(await self._read_register_entities(input_entities, slave_id, is_holding=False, device_id=device_id, inter_delay=inter_delay))
+            data.update(await self._read_register_entities(input_entities, slave_id, is_holding=False, device_id=device_id, inter_delay=inter_delay, max_read_count=max_read_count))
 
         return data
 
     async def _read_register_entities(
-        self, entities: list[dict], slave_id: int, is_holding: bool, device_id: str = "", inter_delay: float = 0.0
+        self, entities: list[dict], slave_id: int, is_holding: bool, device_id: str = "", inter_delay: float = 0.0, max_read_count: int = 125
     ) -> dict[str, Any]:
         """Batch-read a list of register entities, grouping contiguous blocks."""
         data: dict[str, Any] = {}
-        groups = _build_groups(entities)
+        groups = _build_groups(entities, max_read_count)
 
         for group_idx, (start, count, group_entities) in enumerate(groups):
             if group_idx > 0 and inter_delay > 0:
@@ -418,6 +419,16 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
         rr = await self._client.write_register(address, value, device_id=slave_id)
         return not rr.isError()
 
+    async def async_force_refresh_device(self, device_id: str) -> None:
+        """Bypass the poll interval for one device and trigger an immediate refresh.
+
+        Resets the per-device poll timestamp so _async_update_data will re-poll
+        this device on the next coordinator cycle, then requests that cycle now.
+        Call this after any write that should be reflected in HA state immediately.
+        """
+        self._last_polled[device_id] = 0.0
+        await self.async_request_refresh()
+
 
 def _effective_interval(base: float, fail_count: int, threshold: int) -> float:
     """Return poll interval with exponential backoff when a device is offline.
@@ -430,12 +441,13 @@ def _effective_interval(base: float, fail_count: int, threshold: int) -> float:
     return base
 
 
-def _build_groups(entities: list[dict]) -> list[tuple[int, int, list[dict]]]:
+def _build_groups(entities: list[dict], max_read_count: int = 125) -> list[tuple[int, int, list[dict]]]:
     """Sort entities by address and merge contiguous blocks into minimal read ranges.
 
     Returns list of (start_addr, count, entities_in_group).
     Entities are contiguous when the next address is within 1 register of the
-    current group end (no gap or immediately adjacent).
+    current group end (no gap or immediately adjacent). Groups are split when
+    their total register count would exceed max_read_count.
     """
     sorted_entities = sorted(entities, key=lambda e: e["address"])
     groups: list[tuple[int, int, list[dict]]] = []
@@ -452,7 +464,7 @@ def _build_groups(entities: list[dict]) -> list[tuple[int, int, list[dict]]]:
             current_start = addr
             current_end = entity_end
             current_group = [entity]
-        elif addr <= current_end + 1:
+        elif addr <= current_end + 1 and (entity_end - current_start + 1) <= max_read_count:
             current_end = max(current_end, entity_end)
             current_group.append(entity)
         else:

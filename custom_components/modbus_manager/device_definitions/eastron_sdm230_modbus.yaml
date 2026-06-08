@@ -1,0 +1,293 @@
+name: "Eastron SDM230-Modbus"
+manufacturer: "Eastron"
+model: "SDM230-Modbus"
+version: "1.0"
+description: >
+  Single-phase energy meter. All registers are FLOAT32 big-endian (2 registers each).
+  Supports import/export energy, power, apparent power, reactive power,
+  power factor, frequency, demand values and reactive energy.
+
+polling:
+  max_read_count: 4     # SDM230 RTU responses fragment above ~13 bytes (same as SDM630)
+
+entities:
+
+  # ── Voltage / current / power ─────────────────────────────────────────────
+  - id: voltage
+    name: "Voltage"
+    register_type: input
+    address: 0
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "V"
+    device_class: voltage
+    state_class: measurement
+    precision: 1
+
+  - id: current
+    name: "Current"
+    register_type: input
+    address: 6
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 3
+
+  - id: active_power
+    name: "Active Power"
+    register_type: input
+    address: 12
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+
+  - id: apparent_power
+    name: "Apparent Power"
+    register_type: input
+    address: 18
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "VA"
+    device_class: apparent_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: reactive_power
+    name: "Reactive Power"
+    register_type: input
+    address: 24
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "var"
+    device_class: reactive_power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: power_factor
+    name: "Power Factor"
+    register_type: input
+    address: 30
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    device_class: power_factor
+    state_class: measurement
+    precision: 3
+    entity_category: diagnostic
+
+  - id: phase_angle
+    name: "Phase Angle"
+    register_type: input
+    address: 36
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "°"
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  # ── Frequency ─────────────────────────────────────────────────────────────
+  - id: frequency
+    name: "Frequency"
+    register_type: input
+    address: 70
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "Hz"
+    device_class: frequency
+    state_class: measurement
+    precision: 2
+
+  # ── Energy counters ───────────────────────────────────────────────────────
+  - id: import_active_energy
+    name: "Import Active Energy"
+    register_type: input
+    address: 72
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  - id: export_active_energy
+    name: "Export Active Energy"
+    register_type: input
+    address: 74
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  - id: import_reactive_energy
+    name: "Import Reactive Energy"
+    register_type: input
+    address: 76
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kvarh"
+    state_class: total_increasing
+    precision: 2
+    entity_category: diagnostic
+
+  - id: export_reactive_energy
+    name: "Export Reactive Energy"
+    register_type: input
+    address: 78
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kvarh"
+    state_class: total_increasing
+    precision: 2
+    entity_category: diagnostic
+
+  # ── Power demands ─────────────────────────────────────────────────────────
+  - id: total_power_demand
+    name: "Total System Power Demand"
+    register_type: input
+    address: 84
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: total_power_demand_max
+    name: "Maximum Total System Power Demand"
+    register_type: input
+    address: 86
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: import_power_demand
+    name: "Import Power Demand"
+    register_type: input
+    address: 88
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: import_power_demand_max
+    name: "Maximum Import Power Demand"
+    register_type: input
+    address: 90
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: export_power_demand
+    name: "Export Power Demand"
+    register_type: input
+    address: 92
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: export_power_demand_max
+    name: "Maximum Export Power Demand"
+    register_type: input
+    address: 94
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "W"
+    device_class: power
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  # ── Current demands ───────────────────────────────────────────────────────
+  - id: current_demand
+    name: "Current Demand"
+    register_type: input
+    address: 258
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  - id: current_demand_max
+    name: "Maximum Current Demand"
+    register_type: input
+    address: 264
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "A"
+    device_class: current
+    state_class: measurement
+    precision: 1
+    entity_category: diagnostic
+
+  # ── Total energy ──────────────────────────────────────────────────────────
+  - id: total_active_energy
+    name: "Total Active Energy"
+    register_type: input
+    address: 342
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    precision: 2
+
+  - id: total_reactive_energy
+    name: "Total Reactive Energy"
+    register_type: input
+    address: 344
+    entity_type: sensor
+    data_type: FLOAT32
+    byte_order: BIG
+    unit: "kvarh"
+    state_class: total_increasing
+    precision: 2
+    entity_category: diagnostic

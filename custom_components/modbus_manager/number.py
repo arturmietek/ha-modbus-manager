@@ -136,7 +136,7 @@ class ModbusManagerNumber(ModbusManagerEntity, NumberEntity, RestoreEntity):
 
         ok = await self.coordinator.async_write_register(slave_id, address, raw_int)
         if ok:
-            await self.coordinator.async_request_refresh()
+            await self.coordinator.async_force_refresh_device(self._device_config["device_id"])
         else:
             _LOGGER.warning("Write failed for %s address %d", self._entity_id_key, address)
 

@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify manifest version matches tag
+        run: |
+          MANIFEST=$(python -c "import json; print(json.load(open('custom_components/modbus_manager/manifest.json'))['version'])")
+          TAG=${{ steps.version.outputs.version }}
+          if [ "$MANIFEST" != "$TAG" ]; then
+            echo "ERROR: manifest.json version ($MANIFEST) != tag ($TAG)"
+            exit 1
+          fi
+
+      - name: Build integration zip
+        run: |
+          zip -r modbus_manager.zip custom_components/modbus_manager/
+          echo "Built modbus_manager.zip"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: modbus_manager.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
