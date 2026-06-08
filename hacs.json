@@ -1,4 +1,5 @@
 {
   "name": "Modbus Manager",
-  "homeassistant": "2024.1.0"
+  "homeassistant": "2024.1.0",
+  "filename": "modbus_manager.zip"
 }
