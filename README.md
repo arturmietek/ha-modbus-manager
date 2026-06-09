@@ -1,7 +1,7 @@
 # ha-modbus-manager
 
-[![License: MIT](https://img.shields.io/github/license/arturmietek/ha-modbus-manager)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/arturmietek/ha-modbus-manager)](https://github.com/arturmietek/ha-modbus-manager/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/arturmietek/ha-modbus-manager?display_name=tag)](https://github.com/arturmietek/ha-modbus-manager/releases)
 [![Downloads](https://img.shields.io/github/downloads/arturmietek/ha-modbus-manager/total)](https://github.com/arturmietek/ha-modbus-manager/releases)
 [![Tests](https://github.com/arturmietek/ha-modbus-manager/actions/workflows/tests.yaml/badge.svg)](https://github.com/arturmietek/ha-modbus-manager/actions/workflows/tests.yaml)
 [![CodeQL](https://github.com/arturmietek/ha-modbus-manager/actions/workflows/codeql.yml/badge.svg)](https://github.com/arturmietek/ha-modbus-manager/actions/workflows/codeql.yml)
