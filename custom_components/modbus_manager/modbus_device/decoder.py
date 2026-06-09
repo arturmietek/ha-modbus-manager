@@ -2,7 +2,6 @@
 from __future__ import annotations
 import struct
 
-from .model import REGISTER_COUNT
 
 
 def decode_value(

@@ -3,7 +3,6 @@
 import pytest
 import voluptuous as vol
 import yaml
-from pathlib import Path
 
 from custom_components.modbus_manager.config_flow import (
     _slugify,
@@ -19,7 +18,6 @@ from custom_components.modbus_manager.const import (
     CONF_SLAVE_ID,
     CONF_SCAN_INTERVAL,
     CONF_POLL_PRIORITY,
-    CONF_DEFINITION_YAML,
     DEFAULT_SCAN_INTERVAL,
 )
 

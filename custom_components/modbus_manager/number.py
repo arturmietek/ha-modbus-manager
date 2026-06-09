@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
@@ -110,7 +109,7 @@ class ModbusManagerNumber(ModbusManagerEntity, NumberEntity, RestoreEntity):
             try:
                 self._restored_value = float(last_state.state)
             except (ValueError, TypeError):
-                pass
+                _LOGGER.debug("Cannot restore %s — state %r is not numeric", self._entity_id_key, last_state.state)
 
     @property
     def native_value(self) -> float | None:

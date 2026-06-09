@@ -36,7 +36,7 @@ except ImportError:
 
 try:
     from modbus_device import (
-        DeviceDefinition, EntityDef, REGISTER_COUNT,
+        REGISTER_COUNT,
         load_device_definition, decode_value, apply_value_map, format_value,
     )
     _YAML_SUPPORT = True
@@ -849,7 +849,6 @@ def cmd_scan(conn_info: dict, scan_from: int, scan_to: int,
         probe_count = REGISTER_COUNT.get(probe_entity.data_type, 1) if _YAML_SUPPORT else 1
         probe_desc  = f"{probe_entity.name}  addr {probe_addr}  {fc_label}"
     else:
-        fc_label, read_fn, probe_addr, probe_count = None, None, None, None
         probe_desc = "FC03/FC04 addr 0 (no YAML)"
 
     # ── print header ──────────────────────────────────────────────────────────

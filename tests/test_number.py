@@ -1,7 +1,5 @@
 """Unit tests for number._to_raw."""
 
-import pytest
-
 from custom_components.modbus_manager.number import _to_raw
 from custom_components.modbus_manager.const import DATA_TYPE_UINT16, DATA_TYPE_INT16
 

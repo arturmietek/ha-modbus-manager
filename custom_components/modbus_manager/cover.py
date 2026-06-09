@@ -13,7 +13,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import (
     DOMAIN,
     CONF_DEFINITION,
-    CONF_SLAVE_ID,
     ENTITY_TYPE_COVER,
     REGISTER_COIL,
     REGISTER_HOLDING,
@@ -22,7 +21,6 @@ from .coordinator import ModbusManagerCoordinator
 from .entity_base import ModbusManagerEntity
 
 # Values that value_map should resolve to for cover state
-_STATE_OPEN = "open"
 _STATE_CLOSED = "closed"
 _STATE_OPENING = "opening"
 _STATE_CLOSING = "closing"

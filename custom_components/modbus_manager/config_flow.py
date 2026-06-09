@@ -3,9 +3,7 @@ from __future__ import annotations
 
 import re
 import uuid
-import logging
 from pathlib import Path
-from typing import Any
 
 import voluptuous as vol
 import yaml
@@ -51,8 +49,6 @@ from .const import (
     DEFAULT_TIMEOUT,
     DEFAULT_SCAN_INTERVAL,
 )
-
-_LOGGER = logging.getLogger(__name__)
 
 DEFINITIONS_DIR = Path(__file__).parent / "device_definitions"
 USER_DEFINITIONS_SUBDIR = "modbus_manager"

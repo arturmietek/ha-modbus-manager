@@ -23,7 +23,6 @@ from .const import (
     CONF_STOPBITS,
     CONF_BYTESIZE,
     CONF_TIMEOUT,
-    CONF_DEVICES,
     CONF_SLAVE_ID,
     CONF_DEVICE_ID,
     CONF_SCAN_INTERVAL,

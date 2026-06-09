@@ -1,7 +1,5 @@
 """Unit tests for sensor._resolve_state_class."""
 
-import pytest
-
 from custom_components.modbus_manager.sensor import _resolve_state_class
 from custom_components.modbus_manager.const import ENTITY_TYPE_TEXT
 

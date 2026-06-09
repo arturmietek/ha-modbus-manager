@@ -1,7 +1,10 @@
 """Base class for all Modbus Manager entities."""
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+_LOGGER = logging.getLogger(__name__)
 
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
@@ -49,7 +52,7 @@ class ModbusManagerEntity(CoordinatorEntity[ModbusManagerCoordinator]):
             try:
                 self._attr_entity_category = EntityCategory(entity_category_str)
             except ValueError:
-                pass
+                _LOGGER.warning("Unknown entity_category %r for %s — ignored", entity_category_str, entity_id)
 
         self._slave_id: int = slave_id
         self._entity_id_key: str = entity_id

@@ -6,7 +6,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorStateClass,
 )
-from homeassistant.helpers.entity import EntityCategory, DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -23,7 +23,7 @@ from homeassistant.const import (
     PERCENTAGE,
 )
 
-from .const import DOMAIN, CONF_DEFINITION, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_SLAVE_ID, ENTITY_TYPE_SENSOR, ENTITY_TYPE_TEXT
+from .const import DOMAIN, CONF_DEFINITION, CONF_DEVICE_ID, ENTITY_TYPE_SENSOR, ENTITY_TYPE_TEXT
 from .coordinator import ModbusManagerCoordinator
 from .entity_base import ModbusManagerEntity
 
