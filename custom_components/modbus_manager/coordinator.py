@@ -23,6 +23,7 @@ from .const import (
     CONF_STOPBITS,
     CONF_BYTESIZE,
     CONF_TIMEOUT,
+    CONF_RETRIES,
     CONF_SLAVE_ID,
     CONF_DEVICE_ID,
     CONF_SCAN_INTERVAL,
@@ -31,6 +32,8 @@ from .const import (
     CONF_DEVICE_ENABLED,
     CONF_POLL_PRIORITY,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_TIMEOUT,
+    DEFAULT_RETRIES,
     OFFLINE_BACKOFF_CAP_S,
     REGISTER_COIL,
     REGISTER_DISCRETE_INPUT,
@@ -132,7 +135,11 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
 
     def _build_client(self) -> AsyncModbusSerialClient | AsyncModbusTcpClient:
         bus_type = self._bus_config.get("bus_type")
-        timeout = self._bus_config.get(CONF_TIMEOUT, 3)
+        timeout = self._bus_config.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)
+        # Zero retries by default: on a half-duplex RTU bus, an automatic retransmission
+        # can be sent while the device's delayed response to the first attempt is still
+        # in flight, corrupting framing for both. See DEFAULT_TIMEOUT comment in const.py.
+        retries = self._bus_config.get(CONF_RETRIES, DEFAULT_RETRIES)
 
         if bus_type == CONF_BUS_TYPE_RTU:
             return AsyncModbusSerialClient(
@@ -142,12 +149,14 @@ class ModbusManagerCoordinator(DataUpdateCoordinator):
                 stopbits=self._bus_config[CONF_STOPBITS],
                 bytesize=self._bus_config[CONF_BYTESIZE],
                 timeout=timeout,
+                retries=retries,
             )
         else:
             return AsyncModbusTcpClient(
                 host=self._bus_config[CONF_HOST],
                 port=self._bus_config[CONF_TCP_PORT],
                 timeout=timeout,
+                retries=retries,
             )
 
     async def async_connect(self) -> bool:

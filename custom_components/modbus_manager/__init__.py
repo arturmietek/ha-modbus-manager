@@ -8,11 +8,58 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .const import DOMAIN, PLATFORMS, CONF_DEVICES, CONF_DEVICE_ID, CONF_DEFINITION, CONF_DEFINITION_FILE, CONF_DEFINITION_USER_FILE
+from .const import (
+    DOMAIN,
+    PLATFORMS,
+    CONF_DEVICES,
+    CONF_DEVICE_ID,
+    CONF_DEFINITION,
+    CONF_DEFINITION_FILE,
+    CONF_DEFINITION_USER_FILE,
+    CONF_TIMEOUT,
+    CONF_RETRIES,
+    DEFAULT_TIMEOUT,
+    DEFAULT_RETRIES,
+)
 from .coordinator import ModbusManagerCoordinator
 from .config_flow import _load_definition, _load_user_definition
 
 _LOGGER = logging.getLogger(__name__)
+
+# Stored defaults from earlier versions — used by async_migrate_entry to tell "user
+# never touched this" apart from a deliberate value before overwriting it.
+_V1_DEFAULT_TIMEOUT = 3
+_V2_DEFAULT_RETRIES = 0
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate a config entry to the current version.
+
+    v1 -> v2: entries created before the timeout/retries tuning (see const.py) never
+    stored a `retries` key and had `timeout` defaulted to 3s. Add the then-new default
+    retries=0, and bump timeout to the new default only if it's still at the old
+    default — a deliberately customized timeout is left untouched.
+
+    v2 -> v3: retries=0 proved too fragile against routine RS485 noise in practice
+    (see const.py DEFAULT_RETRIES comment) — bump to the new default of 1, again only
+    if the entry is still at the previous default.
+    """
+    if entry.version == 1:
+        new_data = dict(entry.data)
+        if new_data.get(CONF_TIMEOUT) == _V1_DEFAULT_TIMEOUT:
+            new_data[CONF_TIMEOUT] = DEFAULT_TIMEOUT
+        new_data.setdefault(CONF_RETRIES, _V2_DEFAULT_RETRIES)
+        hass.config_entries.async_update_entry(entry, data=new_data, version=2)
+        _LOGGER.info("Migrated Modbus Manager config entry %s from v1 to v2", entry.entry_id)
+
+    if entry.version == 2:
+        new_data = dict(entry.data)
+        if new_data.get(CONF_RETRIES) == _V2_DEFAULT_RETRIES:
+            new_data[CONF_RETRIES] = DEFAULT_RETRIES
+        hass.config_entries.async_update_entry(entry, data=new_data, version=3)
+        _LOGGER.info("Migrated Modbus Manager config entry %s from v2 to v3", entry.entry_id)
+
+    return True
 
 
 def _refresh_device_definitions(config_dir: str, devices: list[dict]) -> list[dict]:

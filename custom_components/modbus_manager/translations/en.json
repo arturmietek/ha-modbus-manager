@@ -16,7 +16,8 @@
           "parity": "Parity",
           "stopbits": "Stop bits",
           "bytesize": "Byte size",
-          "timeout": "Timeout (seconds)"
+          "timeout": "Timeout (seconds)",
+          "retries": "Retries (0 = no automatic retry on timeout)"
         }
       },
       "tcp": {
@@ -24,12 +25,35 @@
         "data": {
           "host": "Host or IP address",
           "tcp_port": "TCP port",
-          "timeout": "Timeout (seconds)"
+          "timeout": "Timeout (seconds)",
+          "retries": "Retries (0 = no automatic retry on timeout)"
+        }
+      },
+      "reconfigure_rtu": {
+        "title": "Modbus RTU — Connection Settings",
+        "data": {
+          "port": "Serial port (e.g. /dev/ttyUSB0)",
+          "baudrate": "Baud rate",
+          "parity": "Parity",
+          "stopbits": "Stop bits",
+          "bytesize": "Byte size",
+          "timeout": "Timeout (seconds)",
+          "retries": "Retries (0 = no automatic retry on timeout)"
+        }
+      },
+      "reconfigure_tcp": {
+        "title": "Modbus TCP — Connection Settings",
+        "data": {
+          "host": "Host or IP address",
+          "tcp_port": "TCP port",
+          "timeout": "Timeout (seconds)",
+          "retries": "Retries (0 = no automatic retry on timeout)"
         }
       }
     },
     "abort": {
-      "already_configured": "This bus is already configured."
+      "already_configured": "This bus is already configured.",
+      "reconfigure_successful": "Connection settings updated."
     }
   },
   "options": {

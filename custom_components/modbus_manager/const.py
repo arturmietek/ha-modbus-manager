@@ -15,6 +15,7 @@ CONF_BYTESIZE = "bytesize"
 CONF_HOST = "host"
 CONF_TCP_PORT = "tcp_port"
 CONF_TIMEOUT = "timeout"
+CONF_RETRIES = "retries"
 
 # Device configuration keys
 CONF_DEVICES = "devices"
@@ -73,7 +74,19 @@ ENTITY_TYPE_COVER = "cover"
 
 # Coordinator update interval defaults (seconds)
 DEFAULT_SCAN_INTERVAL = 10
-DEFAULT_TIMEOUT = 3
+# 6s (up from pymodbus's 3s default) + a single retry (below): on a half-duplex RTU bus,
+# a short timeout combined with several automatic retransmissions risks sending a retry
+# while the device's delayed response is still in flight, corrupting framing for the next
+# request. HA's official Sofar Modbus integration avoids this with 10s timeout + 0 retries
+# at the transport layer (compensating with a conditional app-level retry instead).
+# retries=0 was tried here first and proved too fragile in practice: this bus has enough
+# routine RS485 noise (see project notes — meters wired via a short multi-drop stub) that
+# pymodbus's old default retries=3 was silently absorbing it; going to 0 made every
+# transient single-frame loss immediately count as a failed poll. retries=1 is the
+# compromise: still far less aggressive than the old default, enough margin to absorb
+# routine noise without meaningfully raising the collision risk a single retry poses.
+DEFAULT_TIMEOUT = 6
+DEFAULT_RETRIES = 1
 # Offline backoff: max interval a device can be pushed to when it stops responding (5 min)
 OFFLINE_BACKOFF_CAP_S = 300
 

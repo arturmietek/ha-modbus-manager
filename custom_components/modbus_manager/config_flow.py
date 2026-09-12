@@ -25,6 +25,7 @@ from .const import (
     CONF_HOST,
     CONF_TCP_PORT,
     CONF_TIMEOUT,
+    CONF_RETRIES,
     CONF_DEVICES,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
@@ -47,6 +48,7 @@ from .const import (
     DEFAULT_BYTESIZE,
     DEFAULT_TCP_PORT,
     DEFAULT_TIMEOUT,
+    DEFAULT_RETRIES,
     DEFAULT_SCAN_INTERVAL,
 )
 
@@ -125,10 +127,59 @@ def _load_definition(stem: str) -> dict | None:
         return yaml.safe_load(f)
 
 
-class ModbusManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle the initial setup of a Modbus bus."""
+def _rtu_schema(defaults: dict | None = None) -> vol.Schema:
+    """Build the RTU parameter schema, pre-filled from `defaults` (existing entry data)
+    when editing, or built-in defaults when adding a new bus."""
+    d = defaults or {}
+    return vol.Schema(
+        {
+            vol.Required(CONF_PORT, default=d.get(CONF_PORT, "/dev/ttyUSB0")): str,
+            vol.Required(CONF_BAUDRATE, default=d.get(CONF_BAUDRATE, DEFAULT_BAUDRATE)): vol.In(
+                [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200]
+            ),
+            vol.Required(CONF_PARITY, default=d.get(CONF_PARITY, DEFAULT_PARITY)): vol.In(
+                {"N": "None", "E": "Even", "O": "Odd"}
+            ),
+            vol.Required(CONF_STOPBITS, default=d.get(CONF_STOPBITS, DEFAULT_STOPBITS)): vol.In([1, 2]),
+            vol.Required(CONF_BYTESIZE, default=d.get(CONF_BYTESIZE, DEFAULT_BYTESIZE)): vol.In([7, 8]),
+            vol.Required(CONF_TIMEOUT, default=d.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=30)
+            ),
+            vol.Required(CONF_RETRIES, default=d.get(CONF_RETRIES, DEFAULT_RETRIES)): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=5)
+            ),
+        }
+    )
 
-    VERSION = 1
+
+def _tcp_schema(defaults: dict | None = None) -> vol.Schema:
+    """Build the TCP parameter schema, pre-filled from `defaults` (existing entry data)
+    when editing, or built-in defaults when adding a new bus."""
+    d = defaults or {}
+    host_default = d.get(CONF_HOST)
+    host_field = (
+        vol.Required(CONF_HOST, default=host_default) if host_default is not None else vol.Required(CONF_HOST)
+    )
+    return vol.Schema(
+        {
+            host_field: str,
+            vol.Required(CONF_TCP_PORT, default=d.get(CONF_TCP_PORT, DEFAULT_TCP_PORT)): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=65535)
+            ),
+            vol.Required(CONF_TIMEOUT, default=d.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=30)
+            ),
+            vol.Required(CONF_RETRIES, default=d.get(CONF_RETRIES, DEFAULT_RETRIES)): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=5)
+            ),
+        }
+    )
+
+
+class ModbusManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle the initial setup of a Modbus bus, and reconfiguring an existing one."""
+
+    VERSION = 3
 
     def __init__(self) -> None:
         self._bus_data: dict = {}
@@ -167,26 +218,7 @@ class ModbusManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 options={CONF_DEVICES: []},
             )
 
-        return self.async_show_form(
-            step_id="rtu",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_PORT, default="/dev/ttyUSB0"): str,
-                    vol.Required(CONF_BAUDRATE, default=DEFAULT_BAUDRATE): vol.In(
-                        [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200]
-                    ),
-                    vol.Required(CONF_PARITY, default=DEFAULT_PARITY): vol.In(
-                        {"N": "None", "E": "Even", "O": "Odd"}
-                    ),
-                    vol.Required(CONF_STOPBITS, default=DEFAULT_STOPBITS): vol.In([1, 2]),
-                    vol.Required(CONF_BYTESIZE, default=DEFAULT_BYTESIZE): vol.In([7, 8]),
-                    vol.Required(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): vol.All(
-                        vol.Coerce(int), vol.Range(min=1, max=30)
-                    ),
-                }
-            ),
-            errors=errors,
-        )
+        return self.async_show_form(step_id="rtu", data_schema=_rtu_schema(), errors=errors)
 
     async def async_step_tcp(self, user_input: dict | None = None) -> FlowResult:
         """Step 2b — TCP parameters."""
@@ -205,21 +237,43 @@ class ModbusManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 options={CONF_DEVICES: []},
             )
 
-        return self.async_show_form(
-            step_id="tcp",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_HOST): str,
-                    vol.Required(CONF_TCP_PORT, default=DEFAULT_TCP_PORT): vol.All(
-                        vol.Coerce(int), vol.Range(min=1, max=65535)
-                    ),
-                    vol.Required(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): vol.All(
-                        vol.Coerce(int), vol.Range(min=1, max=30)
-                    ),
-                }
-            ),
-            errors=errors,
-        )
+        return self.async_show_form(step_id="tcp", data_schema=_tcp_schema(), errors=errors)
+
+    # ── Reconfigure an existing bus (connection params only — port/host changes are
+    # not unique-id-checked here, only initial setup guards against duplicates) ──────
+
+    async def async_step_reconfigure(self, user_input: dict | None = None) -> FlowResult:
+        """Entry point HA calls when the user picks "Reconfigure" on an existing bus."""
+        entry = self._get_reconfigure_entry()
+        if entry.data.get(CONF_BUS_TYPE) == CONF_BUS_TYPE_RTU:
+            return await self.async_step_reconfigure_rtu()
+        return await self.async_step_reconfigure_tcp()
+
+    async def async_step_reconfigure_rtu(self, user_input: dict | None = None) -> FlowResult:
+        entry = self._get_reconfigure_entry()
+        if user_input is not None:
+            new_data = {**entry.data, **user_input, CONF_BUS_TYPE: CONF_BUS_TYPE_RTU}
+            return self._save_reconfigured_bus(entry, new_data)
+        return self.async_show_form(step_id="reconfigure_rtu", data_schema=_rtu_schema(entry.data))
+
+    async def async_step_reconfigure_tcp(self, user_input: dict | None = None) -> FlowResult:
+        entry = self._get_reconfigure_entry()
+        if user_input is not None:
+            new_data = {**entry.data, **user_input, CONF_BUS_TYPE: CONF_BUS_TYPE_TCP}
+            return self._save_reconfigured_bus(entry, new_data)
+        return self.async_show_form(step_id="reconfigure_tcp", data_schema=_tcp_schema(entry.data))
+
+    def _save_reconfigured_bus(self, entry: config_entries.ConfigEntry, new_data: dict) -> FlowResult:
+        """Save updated bus data and finish the reconfigure flow.
+
+        Deliberately avoids async_update_reload_and_abort(): it schedules its own
+        reload on top of the one our _async_update_listener (see __init__.py) already
+        triggers via async_update_entry's update_listeners, which HA flags as a
+        redundant-reload deprecation (breaks_in_ha_version 2026.12.0). Our listener is
+        the intended long-term mechanism, so we rely on it alone.
+        """
+        self.hass.config_entries.async_update_entry(entry, data=new_data)
+        return self.async_abort(reason="reconfigure_successful")
 
     @staticmethod
     @callback
