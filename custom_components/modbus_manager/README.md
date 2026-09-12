@@ -81,6 +81,38 @@ When a device is removed from options, `_cleanup_orphaned_registry_entries` in `
 `strings.json` and `translations/en.json` must always be identical.
 When editing one, copy to the other. HA tooling validates against `strings.json`; the runtime uses `translations/`.
 
+## Upstream: HA's "Modernizing Modbus" (2026-08)
+
+HA core is introducing a shared Modbus connection layer: integrations request a "unit" from a
+central Modbus integration instead of opening their own client, so multiple integrations on the
+same bus (serial RS-485 or TCP gateway) queue requests instead of colliding. Built on a new
+`tmodbus` library + standalone `modbus-connection` package. First integrations built on it:
+Fronius (Modbus TCP/SunSpec), **Sofar Inverter Modbus**, Flexit — i.e. an official native
+alternative now exists for two of our built-in devices (KTL-X, TL-G3).
+
+**Does not currently affect us.** `modbus_manager` opens its own `AsyncModbusSerialClient` /
+`AsyncModbusTcpClient` directly via pymodbus — it is not a participant in HA's shared-connection
+scheme. Running the official Sofar integration on the same physical bus as `modbus_manager` would
+still produce the classic two-masters collision (the exact class of bug chased in the 2026-08
+RS485 debugging session — see project memory), because the sharing only works between integrations
+that both use the new mechanism.
+
+**What we'd gain from migrating KTL-X/TL-G3 to the official integration:** almost nothing today —
+our YAML already exposes per-MPPT dc1/dc2 voltage/current/power (dual MPPT), which is the headline
+feature the announcement touts as new for Fronius. The only gap is per-string *lifetime* energy
+(we only track `produced_kwh_total` for the whole inverter). Not worth the migration cost: we'd
+lose `poll_priority`, the fault_word 1-5 bitmasks, offline backoff, and the shared sequential
+coordinator across the whole bus — and we'd have to split the bus between two independently-polling
+integrations, reintroducing the collision risk we already solved with one coordinator.
+
+**Possible future direction, if `tmodbus`/`modbus-connection` becomes consumable outside HA core
+(not just built-in integrations):** `modbus_manager` could swap its transport layer to request a
+shared "unit" instead of opening its own pymodbus client, while keeping the current generic
+YAML-driven decode engine unchanged. That would get collision-safety with any other integration
+that also adopts the new mechanism (official Sofar included), without giving up the
+one-integration-many-devices architecture in favor of writing a bespoke integration per device
+brand. Revisit if/when that library ships as an independently installable package.
+
 ## Known limitations
 
 - **Multi-register writes** — only UINT16/INT16 single-register writes implemented. FLOAT32/INT32 holding register writes silently fail.
