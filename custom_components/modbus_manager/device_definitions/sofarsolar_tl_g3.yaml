@@ -135,7 +135,6 @@ entities:
     validation:
       min: 0
       max: "{rated_power_kw * 1100}"
-      max_delta: "{rated_power_kw * 500}"
 
   - id: ac_reactive_power
     name: "AC Reactive Power"
